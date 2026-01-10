@@ -1,6 +1,48 @@
-from crewai import Agent, Crew, Process, Task
+from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from localize_agent.tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
+import os
+import json
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv()
+
+
+def get_llm_with_fallback():
+    """
+    Get LLM configured for AWS Bedrock Claude using direct boto3.
+    """
+    import boto3
+    
+    # Configure boto3 session
+    session = boto3.Session(
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION', 'us-east-1')
+    )
+    
+    # Test connection
+    try:
+        bedrock = session.client('bedrock-runtime')
+        print(f"✅ AWS Bedrock connection successful")
+    except Exception as e:
+        print(f"❌ AWS Bedrock connection failed: {e}")
+    
+    model = os.getenv("MODEL", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
+    
+    print(f"[LLM] Model: {model}")
+    print(f"[LLM] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
+    
+    # Return LLM with explicit credentials
+    return LLM(
+        model=model,
+        temperature=0.7,
+        max_tokens=4096,
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        aws_region_name=os.getenv('AWS_REGION', 'us-east-1')
+    )
 
 
 @CrewBase
@@ -10,6 +52,20 @@ class LocalizeAgent:
     # Paths to your configuration files
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
+    
+    def __init__(self):
+        """Initialize with LLM configuration"""
+        super().__init__()
+        self.llm = get_llm_with_fallback()
+        self._print_llm_config()
+    
+    def _print_llm_config(self):
+        """Print LLM configuration info"""
+        model = os.getenv("PRIMARY_MODEL", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
+        
+        print(f"[OK] Primary Model: {model}")
+        print(f"[OK] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
+        print(f"[INFO] Using AWS Bedrock (Gemini disabled)")
     
     @agent
     def planning_agent(self) -> Agent:
@@ -38,6 +94,7 @@ class LocalizeAgent:
 
         return Agent(
             config=self.agents_config['planning_agent'],
+            llm=self.llm,
             delegate=delegate_tasks,
             verbose=True
         )
@@ -46,6 +103,7 @@ class LocalizeAgent:
     def design_issue_identification_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['design_issue_identification_agent'],
+            llm=self.llm,
             verbose=False
         )
     
@@ -53,6 +111,7 @@ class LocalizeAgent:
     def code_analyzer_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['code_analyzer_agent'],
+            llm=self.llm,
             tools=[CountMethods(), VariableUsage(), FanInFanOutAnalysis(), ClassCouplingAnalysis()],
             verbose=False
         )
@@ -61,6 +120,7 @@ class LocalizeAgent:
     def prompt_engineering_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['prompt_engineering_agent'],
+            llm=self.llm,
             verbose=True
         )
     
@@ -68,6 +128,7 @@ class LocalizeAgent:
     def design_issue_localization_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['design_issue_localization_agent'],
+            llm=self.llm,
             verbose=False
         )
     
@@ -75,6 +136,7 @@ class LocalizeAgent:
     def ranking_agent(self) -> Agent:
         return Agent(
             config=self.agents_config['ranking_agent'],
+            llm=self.llm,
             verbose=False
         )
     

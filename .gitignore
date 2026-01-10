@@ -1,9 +1,13 @@
 # Ignore virtual environments
 venv/
-.env/
+.env
 .venv/
 localize_agent/.env
+localize_agent/src/localize_agent/.env
 LocalizeAgentEnv/
+
+# Ignore AWS credentials and test files
+test_*.py
 
 # Ignore log files
 *.log
