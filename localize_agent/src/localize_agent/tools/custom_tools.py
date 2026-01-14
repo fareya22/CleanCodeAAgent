@@ -16,21 +16,21 @@ class CountMethods(BaseTool):
     def _run(self, source_code: str) -> str:
         try:
             print("Debug: Starting to clean up the Java source code.")
-            # Remove comments and import statements
+           
             source_code = re.sub(r"//.*?$|/\*.*?\*/|^\s*import\s+.*?;", "", source_code, flags=re.DOTALL | re.MULTILINE)
             print("Debug: Cleaned up the Java source code.")
 
             print("Debug: Starting to parse the Java source code.")
-            # Parse the Java source
+            
             tree = javalang.parse.parse(source_code)
             print("Debug: Successfully parsed the Java source code.")
 
-            # Traverse top-level type declarations and count methods
+           
             method_count = 0
             for type_decl in tree.types:
                 print(f"Debug: Processing type declaration: {type_decl.name if hasattr(type_decl, 'name') else 'Unknown'}")
                 
-                # You can handle ClassDeclaration, InterfaceDeclaration, EnumDeclaration, etc.
+                
                 if hasattr(type_decl, 'methods'):
                     method_count += len(type_decl.methods)
                     print(f"Debug: Found {len(type_decl.methods)} methods in {type_decl.name if hasattr(type_decl, 'name') else 'Unknown'}.")
@@ -94,7 +94,7 @@ class FanInFanOutAnalysis(BaseTool):
 
     def _run(self, source_code: str) -> str:
         try:
-            # Strip out comments and import statements for cleaner parsing
+           
             source_code = re.sub(
                 r"//.*?$|/\*.*?\*/|^\s*import\s+.*?;",
                 "",
@@ -102,13 +102,13 @@ class FanInFanOutAnalysis(BaseTool):
                 flags=re.DOTALL | re.MULTILINE
             )
 
-            # Parse the Java source code
+            
             tree = javalang.parse.parse(source_code)
 
-            # A dictionary mapping "ClassName.methodName" -> set of called method names
+           
             method_calls = {}
 
-            # Gather all top-level types (classes, interfaces, enums)
+           
             for type_decl in tree.types:
                 # If it's something that can contain methods
                 if hasattr(type_decl, 'methods'):
