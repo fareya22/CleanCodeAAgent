@@ -10,9 +10,11 @@ from crewai import LLM
 load_dotenv()
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
-# Configure LiteLLM settings
-litellm.set_verbose = False
+# Configure LiteLLM settings with debugging
+litellm.set_verbose = True  # Enable debugging to see what's happening
 litellm.drop_params = True  # Drop unsupported params
+litellm.num_retries = 3  # Retry on connection errors
+litellm.request_timeout = 600  # Increase timeout to 10 minutes
 
 # AWS Bedrock Claude as PRIMARY model
 PRIMARY_MODEL = "bedrock/anthropic.claude-3-haiku-20240307-v1:0"

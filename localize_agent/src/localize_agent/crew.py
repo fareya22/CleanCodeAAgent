@@ -34,11 +34,13 @@ def get_llm_with_fallback():
     print(f"[LLM] Model: {model}")
     print(f"[LLM] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
     
-    # Return LLM with explicit credentials
+    # Return LLM with explicit credentials and extended settings
     return LLM(
         model=model,
         temperature=0.7,
-        max_tokens=4096,
+        max_tokens=8000,  # Increased for large code analysis
+        timeout=300,  # 5 minutes timeout
+        max_retries=3,  # Retry 3 times on failure
         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
         aws_region_name=os.getenv('AWS_REGION', 'us-east-1')
@@ -113,7 +115,9 @@ class LocalizeAgent:
             config=self.agents_config['code_analyzer_agent'],
             llm=self.llm,
             tools=[CountMethods(), VariableUsage(), FanInFanOutAnalysis(), ClassCouplingAnalysis()],
-            verbose=False
+            verbose=True,  # Enable verbose to see what's happening
+            max_iter=5,  # Limit iterations to prevent infinite loops
+            allow_delegation=False  # Prevent delegation issues
         )
     
     @agent
