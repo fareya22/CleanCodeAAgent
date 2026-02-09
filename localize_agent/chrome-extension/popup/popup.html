@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CleanCodeAgent Settings</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 360px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: #ffffff;
+      color: #24292f;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #0969da 0%, #0550ae 100%);
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .header p {
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    .content {
+      padding: 20px;
+    }
+
+    .section {
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #24292f;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: #57606a;
+    }
+
+    input[type="text"],
+    input[type="url"] {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      font-size: 13px;
+      transition: border-color 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #0969da;
+      box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.1);
+    }
+
+    .help-text {
+      font-size: 11px;
+      color: #57606a;
+      margin-top: 4px;
+    }
+
+    .help-text a {
+      color: #0969da;
+      text-decoration: none;
+    }
+
+    .help-text a:hover {
+      text-decoration: underline;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #0969da;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #0550ae;
+    }
+
+    button:active {
+      background: #033d8b;
+    }
+
+    .status {
+      display: none;
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-top: 16px;
+      text-align: center;
+    }
+
+    .status.success {
+      background: #dafbe1;
+      color: #1a7f37;
+      border: 1px solid #a2e0b8;
+    }
+
+    .status.error {
+      background: #ffebe9;
+      color: #d73a49;
+      border: 1px solid #ffccd7;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .stats {
+      background: #f6f8fa;
+      border-radius: 6px;
+      padding: 16px;
+    }
+
+    .stat-item {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      font-size: 13px;
+    }
+
+    .stat-label {
+      color: #57606a;
+    }
+
+    .stat-value {
+      font-weight: 600;
+      color: #24292f;
+    }
+
+    .footer {
+      padding: 16px 20px;
+      border-top: 1px solid #d0d7de;
+      text-align: center;
+      font-size: 11px;
+      color: #57606a;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>⚡ CleanCodeAgent</h1>
+    <p>AI-Powered Code Analysis for GitHub</p>
+  </div>
+
+  <div class="content">
+    <div class="section">
+      <h2 class="section-title">🔑 GitHub Settings</h2>
+      <div class="form-group">
+        <label for="github-token">Personal Access Token</label>
+        <input type="text" id="github-token" placeholder="ghp_xxxxxxxxxxxx">
+        <p class="help-text">
+          Required for private repos. 
+          <a href="https://github.com/settings/tokens/new" target="_blank">Create token</a>
+        </p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2 class="section-title">🖥️ Backend Server</h2>
+      <div class="form-group">
+        <label for="api-url">API Server URL</label>
+        <input type="url" id="api-url" placeholder="http://localhost:5000">
+        <p class="help-text">Your CleanCodeAgent backend server address</p>
+      </div>
+    </div>
+
+    <button id="save-btn">Save Settings</button>
+
+    <div id="status" class="status"></div>
+
+    <div class="section" style="margin-top: 24px;">
+      <h2 class="section-title">📊 Statistics</h2>
+      <div class="stats">
+        <div class="stat-item">
+          <span class="stat-label">Server Status:</span>
+          <span class="stat-value" id="server-status">Checking...</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-label">Version:</span>
+          <span class="stat-value">1.0.0</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Powered by CrewAI Multi-Agent System
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
