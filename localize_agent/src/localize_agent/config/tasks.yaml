@@ -3,8 +3,8 @@ planning_task:
     Create a brief, step-by-step analysis plan that includes:
     1. Design Issue Identification Phase:
        - Specify which code elements to analyze (classes, methods, dependencies)
-       - Define criteria for identifying modularity, complexity, and information hiding issues
-       - List specific metrics to measure (e.g., coupling, cohesion)
+       - Define criteria for identifying modularity, complexity, information hiding, god class, and feature envy issues
+       - List specific metrics to measure (e.g., coupling, cohesion, class size, method dependencies)
     
     2. Code Analysis Phase:
        - Specify dependencies and relationships to examine
@@ -27,14 +27,14 @@ planning_task:
 
 design_issue_identification_task:
   description: >
-    Conduct an initial review of the following code to identify design issues from the following categories: "modularity", "complexity", and "information hiding". Suggest an appropriate refactoring type based on the identified issue(s), selected from "move method", "parameterize variable", "inline variable", or "inline method". The output must be structured and easily parsable for subsequent tasks.
+    Conduct an initial review of the following code to identify design issues from the following categories: "modularity", "complexity", "information hiding", "god class", and "feature envy". Suggest an appropriate refactoring type based on the identified issue(s), selected from "move method", "extract class", "extract method", "parameterize variable", "inline variable", or "inline method". The output must be structured and easily parsable for subsequent tasks.
     
     Code to analyze:
     {code}
   expected_output: >
     A JSON object with two keys:
-    - "design_issues": an array of one or more design issue types, each being one of "modularity", "complexity", or "information hiding".
-    - "refactoring": a string that is exactly one of "move method", "parameterize variable", "inline variable", or "inline method".
+    - "design_issues": an array of one or more design issue types, each being one of "modularity", "complexity", "information hiding", "god class", or "feature envy".
+    - "refactoring": a string that is exactly one of "move method", "extract class", "extract method", "parameterize variable", "inline variable", or "inline method".
     Do not include any extra data.
   agent: design_issue_identification_agent
 
@@ -74,14 +74,14 @@ prompt_engineering_task:
 
 design_issue_localization_task:
   description: >
-    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the "prompt" dictionary, follow its instructions, and determine the class and method (or variable, if applicable) that need to be refactored. If there are multiple functions or locations to refactor, generate a separate JSON/dict for each. The output must be formatted as a list of JSON/dict objects, where each object contains exactly the following keys: "Class name", "Function name", "Function signature", "refactoring_type", and "rationale". This output should instruct the developer on where to apply the refactoring.
+    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the "prompt" dictionary, follow its instructions, and determine the class and method (or variable, if applicable) that need to be refactored. If there are multiple functions or locations to refactor, generate a separate JSON/dict for each. The output must be formatted as a list of JSON/dict objects, where each object contains exactly the following keys: "Class name", "Function name", "Function signature", "refactoring_type", and "rationale". This output should instruct the developer on where to apply the refactoring. For "extract class" refactoring, identify the class that should be split and the methods/fields that should be moved to a new class.
   expected_output: >
     A list of JSON/dict objects, each formatted exactly as follows:
     {
       "Class name": "Identified class name",
       "Function name": "Identified function name",
       "Function signature": "Identified function signature",
-      "refactoring_type": "One of move method, parameterize variable, inline variable, or inline method",
+      "refactoring_type": "One of move method, extract class, extract method, parameterize variable, inline variable, or inline method",
       "rationale": "Brief explanation of why this location needs refactoring"
     }
     Do not include any extra information.
@@ -96,7 +96,7 @@ ranking_task:
       "Class name": "Identified class name",
       "Function name": "Identified function name",
       "Function signature": "Identified function signature",
-      "refactoring_type": "One of move method, parameterize variable, inline variable, or inline method",
+      "refactoring_type": "One of move method, extract class, extract method, parameterize variable, inline variable, or inline method",
       "rationale": "Brief explanation of why this location needs refactoring",
       "rank": "An integer representing the rank of this item"
     }
