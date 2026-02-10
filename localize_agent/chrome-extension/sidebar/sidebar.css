@@ -46,12 +46,30 @@ body.cleancode-show .cleancode-sidebar {
 .cleancode-branch-info {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   font-size: 12px;
   opacity: 0.8;
 }
 
 .cleancode-branch-info .branch-icon {
   margin-right: 6px;
+}
+
+.cache-clear-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: auto;
+  transition: all 0.2s;
+}
+
+.cache-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 /* Tabs */
@@ -415,6 +433,179 @@ body.cleancode-show .cleancode-toggle {
 
 .cleancode-sidebar ::-webkit-scrollbar-thumb:hover {
   background: #afb8c1;
+}
+
+/* No Issues Message */
+.no-issues-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #57606a;
+}
+
+.no-issues-message .success-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.no-issues-message h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 8px;
+}
+
+.no-issues-message p {
+  font-size: 14px;
+  color: #57606a;
+}
+
+/* Analysis Summary */
+.analysis-summary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+}
+
+.analysis-summary h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: white;
+}
+
+.summary-stats {
+  display: flex;
+  justify-content: space-around;
+}
+
+.summary-stats .stat {
+  text-align: center;
+}
+
+.summary-stats .stat-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.summary-stats .stat-label {
+  display: block;
+  font-size: 12px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Analyzing Status */
+.analyzing-status {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.analyzing-status h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #24292f;
+  margin: 20px 0 12px;
+}
+
+.analyzing-status #analysis-progress {
+  font-size: 13px;
+  color: #57606a;
+  margin-top: 8px;
+}
+
+/* Error Message */
+.error-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #d1242f;
+}
+
+.error-message .error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.error-message h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.error-message p {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.error-message .error-hint {
+  font-size: 12px;
+  color: #57606a;
+  font-style: italic;
+}
+
+.error-message .retry-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background: #2da44e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.error-message .retry-btn:hover {
+  background: #2c974b;
+}
+
+/* No Files Message */
+.no-files-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #57606a;
+}
+
+.no-files-message .info-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.no-files-message h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 8px;
+}
+
+.no-files-message p {
+  font-size: 14px;
+  color: #57606a;
+}
+
+/* File Header Expand */
+.file-header {
+  cursor: pointer;
+}
+
+.file-header .expand-icon {
+  margin-left: auto;
+  font-size: 12px;
+  transition: transform 0.3s;
+}
+
+/* Badge variants */
+.badge.success {
+  background: #2da44e;
+}
+
+.badge.issue-badge {
+  background: #d1242f;
+  margin-left: 8px;
 }
 
 

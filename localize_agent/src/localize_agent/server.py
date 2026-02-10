@@ -10,8 +10,14 @@ import json
 import traceback
 from pathlib import Path
 
-# Import your existing crew
-from localize_agent.crew import LocalizeAgent
+# Import your existing crew - handle both direct run and package import
+try:
+    from localize_agent.crew import LocalizeAgent
+    from localize_agent.batch_analyzer import BatchAnalyzer
+except ModuleNotFoundError:
+    # Running directly from src/localize_agent directory
+    from crew import LocalizeAgent
+    from batch_analyzer import BatchAnalyzer
 
 app = Flask(__name__)
 CORS(app)  # Allow Chrome extension to call this API
@@ -31,7 +37,7 @@ def health_check():
 @app.route('/analyze', methods=['POST'])
 def analyze_repository():
     """
-    Analyze multiple files from a repository
+    Analyze multiple files from a repository using batch analyzer
     
     Request JSON:
     {
@@ -66,56 +72,28 @@ def analyze_repository():
             }), 400
         
         print(f"\n{'='*60}")
-        print(f"[API] Analyzing repository: {repo}")
-        print(f"[API] Number of files: {len(files)}")
+        print(f"[API] 📦 Analyzing repository: {repo}")
+        print(f"[API] 📄 Number of files: {len(files)}")
         print(f"{'='*60}\n")
         
-        all_results = []
-        
-        # Analyze each file
-        for idx, file_info in enumerate(files, 1):
-            file_path = file_info.get('path')
-            code_content = file_info.get('content')
-            
-            if not code_content:
-                print(f"[API] Skipping {file_path} - no content")
-                continue
-            
-            print(f"\n[API] [{idx}/{len(files)}] Analyzing: {file_path}")
-            print(f"[API] Code length: {len(code_content)} characters")
-            
-            try:
-                # Run your CrewAI agents
-                issues = analyze_single_file(code_content, file_path)
-                
-                all_results.append({
-                    "file": file_path,
-                    "issues": issues,
-                    "status": "success"
-                })
-                
-                print(f"[API] ✓ Found {len(issues)} issues in {file_path}")
-                
-            except Exception as e:
-                print(f"[API] ✗ Error analyzing {file_path}: {str(e)}")
-                traceback.print_exc()
-                
-                all_results.append({
-                    "file": file_path,
-                    "issues": [],
-                    "status": "error",
-                    "error": str(e)
-                })
+        # Use BatchAnalyzer with conservative settings to avoid rate limits
+        # max_workers=1: Sequential processing (no parallel to avoid rate limits)
+        # delay_between_files=3: 3 seconds between each file
+        batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=3)
+        all_results = batch_analyzer.analyze_repository(files, repo)
         
         # Cache results
         cache_key = repo
         analysis_cache[cache_key] = all_results
         
-        print(f"\n{'='*60}")
-        print(f"[API] Analysis complete for {repo}")
-        print(f"[API] Total files analyzed: {len(all_results)}")
+        # Calculate summary
         total_issues = sum(len(r.get('issues', [])) for r in all_results)
-        print(f"[API] Total issues found: {total_issues}")
+        successful = len([r for r in all_results if r['status'] == 'success'])
+        
+        print(f"\n{'='*60}")
+        print(f"[API] ✅ Analysis complete for {repo}")
+        print(f"[API] 📊 Successful: {successful}/{len(all_results)}")
+        print(f"[API] 🐛 Total issues: {total_issues}")
         print(f"{'='*60}\n")
         
         return jsonify({
@@ -124,12 +102,13 @@ def analyze_repository():
             "results": all_results,
             "summary": {
                 "total_files": len(all_results),
+                "successful_files": successful,
                 "total_issues": total_issues
             }
         })
         
     except Exception as e:
-        print(f"[API] ERROR: {str(e)}")
+        print(f"[API] ❌ ERROR: {str(e)}")
         traceback.print_exc()
         return jsonify({
             "status": "error",
@@ -210,9 +189,33 @@ def analyze_single_file(code_content, file_path="unknown"):
         
         print(f"[CREW] Crew execution completed")
         print(f"[CREW] Result type: {type(result)}")
-        print(f"[CREW] Result: {result}")
         
-        # Parse the ranking_report.md file
+        # Try to get data directly from CrewOutput
+        try:
+            # CrewOutput has a raw property or can be converted to string
+            if hasattr(result, 'raw'):
+                result_text = result.raw
+            elif hasattr(result, 'json'):
+                result_text = result.json
+            else:
+                result_text = str(result)
+            
+            print(f"[CREW] Result text length: {len(result_text)} characters")
+            
+            # Try to parse as JSON directly
+            issues = json.loads(result_text) if isinstance(result_text, str) else result_text
+            
+            if isinstance(issues, list) and len(issues) > 0:
+                print(f"[CREW] ✅ Successfully parsed {len(issues)} issues from CrewOutput")
+                return issues
+            else:
+                print(f"[CREW] CrewOutput parse unsuccessful, trying file-based parsing...")
+                
+        except Exception as parse_error:
+            print(f"[CREW] Direct parsing failed: {parse_error}")
+            print(f"[CREW] Falling back to file-based parsing...")
+        
+        # Fallback: Parse the ranking_report.md file
         ranking_file = Path("ranking_report.md")
         
         if not ranking_file.exists():
@@ -304,26 +307,58 @@ def parse_ranking_report(report_text):
     import re
     
     try:
-        # Try to find JSON array in the report
-        # Look for pattern: [{"Class name": ..., "Function name": ..., ...}]
+        # Clean up the report text - remove markdown formatting
+        clean_text = report_text.strip()
         
-        # Method 1: Direct JSON match
-        json_match = re.search(r'\[[\s\S]*?\{[\s\S]*?"Class name"[\s\S]*?\}[\s\S]*?\]', report_text)
+        # Method 1: Try to find JSON array at the start
+        # Look for [ at the beginning and ] followed by explanatory text
+        match = re.search(r'^(\[\s*\{[\s\S]*?\}\s*\])', clean_text, re.MULTILINE)
         
-        if json_match:
-            json_str = json_match.group(0)
-            issues = json.loads(json_str)
-            return issues
+        if match:
+            json_str = match.group(1)
+            print(f"[PARSE] Found JSON array (length: {len(json_str)})")
+            try:
+                issues = json.loads(json_str)
+                if isinstance(issues, list):
+                    print(f"[PARSE] ✅ Successfully parsed {len(issues)} issues")
+                    return issues
+            except json.JSONDecodeError as e:
+                print(f"[PARSE] JSON decode error: {e}")
+                # Try to fix common issues
+                json_str = json_str.replace('\n', ' ').replace('\r', '')
+                try:
+                    issues = json.loads(json_str)
+                    return issues
+                except:
+                    pass
         
-        # Method 2: Look for code blocks
+        # Method 2: Look for JSON in code blocks
         code_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', report_text)
         
         if code_block_match:
             json_str = code_block_match.group(1)
+            print(f"[PARSE] Found JSON in code block")
             issues = json.loads(json_str)
             return issues
         
-        print("[PARSE] Could not find JSON in report")
+        # Method 3: Try to extract individual issue objects
+        issues = []
+        issue_pattern = r'\{[^}]*"Class name"[^}]*"Function name"[^}]*"refactoring_type"[^}]*\}'
+        matches = re.finditer(issue_pattern, report_text, re.DOTALL)
+        
+        for match in matches:
+            try:
+                issue_str = match.group(0)
+                issue = json.loads(issue_str)
+                issues.append(issue)
+            except:
+                continue
+        
+        if issues:
+            print(f"[PARSE] Extracted {len(issues)} issues using pattern matching")
+            return issues
+        
+        print("[PARSE] Could not find valid JSON in report")
         return []
         
     except json.JSONDecodeError as e:
@@ -331,6 +366,7 @@ def parse_ranking_report(report_text):
         return []
     except Exception as e:
         print(f"[PARSE] Error: {e}")
+        traceback.print_exc()
         return []
 
 if __name__ == '__main__':

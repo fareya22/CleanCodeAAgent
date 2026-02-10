@@ -75,7 +75,10 @@ def run():
 
     try:
         print("[RUN] Running crew with AWS Bedrock Claude...")
-        from localize_agent.crew import LocalizeAgent
+        try:
+            from localize_agent.crew import LocalizeAgent
+        except ModuleNotFoundError:
+            from crew import LocalizeAgent
         LocalizeAgent().crew().kickoff(inputs=inputs)
         print("[OK] Crew execution completed successfully!")
     except Exception as e:

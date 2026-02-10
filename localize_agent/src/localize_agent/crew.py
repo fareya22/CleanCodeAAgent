@@ -1,6 +1,9 @@
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
-from localize_agent.tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
+try:
+    from localize_agent.tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
+except ModuleNotFoundError:
+    from tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
 import os
 import json
 from dotenv import load_dotenv
@@ -34,13 +37,13 @@ def get_llm_with_fallback():
     print(f"[LLM] Model: {model}")
     print(f"[LLM] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
     
-    # Return LLM with explicit credentials and extended settings
+    # Return LLM with explicit credentials and optimized settings
     return LLM(
         model=model,
-        temperature=0.7,
-        max_tokens=8000,  # Increased for large code analysis
-        timeout=300,  # 5 minutes timeout
-        max_retries=3,  # Retry 3 times on failure
+        temperature=0.5,  # Lower temperature for more consistent output
+        max_tokens=4000,  # Reduced to avoid overwhelming responses
+        timeout=120,  # 2 minutes timeout to fail faster
+        max_retries=5,  # More retries with backoff
         aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
         aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
         aws_region_name=os.getenv('AWS_REGION', 'us-east-1')
