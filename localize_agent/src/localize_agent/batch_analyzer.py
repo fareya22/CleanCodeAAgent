@@ -17,17 +17,22 @@ import traceback
 class BatchAnalyzer:
     """Analyze multiple Java files from a repository"""
     
-    def __init__(self, max_workers=1, delay_between_files=2):
+    def __init__(self, max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3):
         """
         Initialize batch analyzer
         
         Args:
             max_workers: Maximum number of parallel analysis workers (default 1 to avoid rate limits)
-            delay_between_files: Seconds to wait between file analyses
+            delay_between_files: Seconds to wait between file analyses (default 5 to avoid rate limits)
+            max_retries: Maximum number of retries for failed LLM calls (default 5 for AWS stability)
+            retry_backoff: Backoff multiplier for retry delays (default 3 for aggressive backoff)
         """
         self.max_workers = max_workers
         self.delay_between_files = delay_between_files
+        self.max_retries = max_retries
+        self.retry_backoff = retry_backoff
         self.results = []
+        self.analysis_cache = {}
     
     def analyze_repository(self, files: List[Dict[str, str]], repo_name: str = "unknown") -> List[Dict[str, Any]]:
         """
@@ -44,6 +49,8 @@ class BatchAnalyzer:
         print(f"📦 BATCH ANALYSIS: {repo_name}")
         print(f"📄 Total files: {len(files)}")
         print(f"⚙️  Workers: {self.max_workers}")
+        print(f"🔄 Max retries: {self.max_retries}")
+        print(f"⏳ Retry backoff: {self.retry_backoff}s")
         print(f"{'='*70}\n")
         
         results = []
@@ -85,32 +92,25 @@ class BatchAnalyzer:
                 error_msg = str(e)
                 print(f"    ❌ Error: {error_msg}")
                 
-                # If LLM error, use fallback heuristic analysis
-                if "LLM" in error_msg or "empty" in error_msg.lower():
-                    print(f"    🔄 Using fallback heuristic analysis...")
-                    try:
-                        fallback_issues = self._create_basic_issues(code_content, file_path)
-                        results.append({
-                            "file": file_path,
-                            "issues": fallback_issues,
-                            "status": "success",
-                            "fallback": True
-                        })
-                        print(f"    ✅ Found {len(fallback_issues)} issues (fallback)")
-                    except Exception as fb_error:
-                        print(f"    ❌ Fallback also failed: {fb_error}")
-                        results.append({
-                            "file": file_path,
-                            "issues": [],
-                            "status": "error",
-                            "error": error_msg
-                        })
-                else:
+                # Try fallback heuristic analysis as last resort
+                print(f"    🔄 Attempting fallback heuristic analysis...")
+                try:
+                    fallback_issues = self._create_basic_issues(code_content, file_path)
+                    results.append({
+                        "file": file_path,
+                        "issues": fallback_issues,
+                        "status": "success",
+                        "method": "fallback_heuristic"
+                    })
+                    print(f"    ✅ Found {len(fallback_issues)} issues (heuristic analysis)")
+                except Exception as fb_error:
+                    print(f"    ❌ Fallback also failed: {fb_error}")
                     results.append({
                         "file": file_path,
                         "issues": [],
                         "status": "error",
-                        "error": error_msg
+                        "error": error_msg,
+                        "fallback_error": str(fb_error)
                     })
         
         # Summary
@@ -122,13 +122,14 @@ class BatchAnalyzer:
         print(f"{'='*70}")
         print(f"✅ Successful: {successful}/{len(java_files)}")
         print(f"🐛 Total issues found: {total_issues}")
+        print(f"💾 Cache size: {len(self.analysis_cache)} entries")
         print(f"{'='*70}\n")
         
         return results
     
     def analyze_single_file(self, code_content: str, file_path: str = "unknown.java") -> List[Dict[str, Any]]:
         """
-        Analyze a single file using CrewAI agents
+        Analyze a single file using CrewAI agents with retry logic
         
         Args:
             code_content: Java source code
@@ -137,27 +138,82 @@ class BatchAnalyzer:
         Returns:
             List of issues with rankings
         """
+        # Check cache first
+        cache_key = hash(code_content)
+        if cache_key in self.analysis_cache:
+            print(f"    💾 Using cached results for {file_path}")
+            return self.analysis_cache[cache_key]
+        
+        last_error = None
+        
+        # Retry logic with exponential backoff
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                print(f"    [Attempt {attempt}/{self.max_retries}] Running crew analysis...")
+                
+                # Prepare input for crew
+                inputs = {
+                    "code": code_content
+                }
+                
+                # Run LocalizeAgent crew
+                crew = LocalizeAgent().crew()
+                result = crew.kickoff(inputs=inputs)
+                
+                # Parse result
+                issues = self._parse_crew_output(result, file_path)
+                
+                # Cache successful result
+                self.analysis_cache[cache_key] = issues
+                
+                return issues
+                
+            except Exception as e:
+                last_error = str(e)
+                print(f"    ⚠️  Attempt {attempt} failed: {last_error}")
+                
+                # Check if this is an LLM connection error
+                if attempt < self.max_retries and self._is_llm_error(last_error):
+                    # Calculate backoff time
+                    backoff_time = self.retry_backoff ** (attempt - 1)
+                    print(f"    ⏳ LLM error detected. Retrying in {backoff_time}s...")
+                    time.sleep(backoff_time)
+                    continue
+                else:
+                    # No more retries or not an LLM error
+                    break
+        
+        # All retries exhausted or other error - use fallback
+        print(f"    [FALLBACK] All retries exhausted. Using heuristic analysis...")
         try:
-            # Prepare input for crew
-            inputs = {
-                "code": code_content
-            }
-            
-            # Run LocalizeAgent crew
-            crew = LocalizeAgent().crew()
-            result = crew.kickoff(inputs=inputs)
-            
-            # Parse result
-            issues = self._parse_crew_output(result, file_path)
-            
-            return issues
-            
-        except Exception as e:
-            print(f"[CREW ERROR] {str(e)}")
-            traceback.print_exc()
-            
-            # Return fallback issues
-            return self._create_basic_issues(code_content, file_path)
+            fallback_issues = self._create_basic_issues(code_content, file_path)
+            # Cache fallback result
+            self.analysis_cache[cache_key] = fallback_issues
+            return fallback_issues
+        except Exception as fb_error:
+            print(f"    ❌ Fallback analysis also failed: {str(fb_error)}")
+            return []
+    
+    def _is_llm_error(self, error_msg: str) -> bool:
+        """
+        Detect if this is an LLM/connection error that warrants retry
+        """
+        llm_error_keywords = [
+            'llm',
+            'empty',
+            'timeout',
+            'connection',
+            'bedrock',
+            'aws',
+            'credentials',
+            'http',
+            'connection refused',
+            'no response',
+            'rate limit'
+        ]
+        
+        error_lower = error_msg.lower()
+        return any(keyword in error_lower for keyword in llm_error_keywords)
     
     def _parse_crew_output(self, result, file_path: str) -> List[Dict[str, Any]]:
         """Parse CrewAI output to extract issues"""
@@ -170,17 +226,38 @@ class BatchAnalyzer:
             else:
                 result_text = str(result)
             
-            # Try to parse as JSON
-            issues = json.loads(result_text) if isinstance(result_text, str) else result_text
+            # Validate we have content
+            if not result_text or result_text.strip() == '' or result_text == 'None':
+                print(f"    [PARSE] Empty response from LLM, trying fallback...")
+                return self._parse_ranking_report()
             
-            if isinstance(issues, list) and len(issues) > 0:
-                return issues
+            # Try to parse as JSON
+            try:
+                issues = json.loads(result_text) if isinstance(result_text, str) else result_text
+                
+                if isinstance(issues, list) and len(issues) > 0:
+                    print(f"    [PARSE] ✅ Successfully parsed {len(issues)} issues from LLM output")
+                    return issues
+            except json.JSONDecodeError:
+                print(f"    [PARSE] JSON decode failed, trying regex extraction...")
+                # Try to extract JSON from response
+                import re
+                match = re.search(r'(\[\s*\{[\s\S]*?\}\s*\])', result_text)
+                if match:
+                    try:
+                        issues = json.loads(match.group(1))
+                        if isinstance(issues, list) and len(issues) > 0:
+                            print(f"    [PARSE] ✅ Extracted {len(issues)} issues from response")
+                            return issues
+                    except:
+                        pass
             
             # Fallback: read from ranking_report.md
+            print(f"    [PARSE] Falling back to ranking_report.md parsing...")
             return self._parse_ranking_report()
             
         except Exception as e:
-            print(f"[PARSE ERROR] {str(e)}")
+            print(f"    [PARSE ERROR] {str(e)}")
             return self._parse_ranking_report()
     
     def _parse_ranking_report(self) -> List[Dict[str, Any]]:

@@ -10,8 +10,9 @@ from crewai import LLM
 load_dotenv()
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
-# Configure LiteLLM settings with debugging
-litellm.set_verbose = True  # Enable debugging to see what's happening
+# Configure LiteLLM settings
+# Note: Use os.environ['LITELLM_LOG'] = 'DEBUG' for debugging (not recommended in production - exposes credentials)
+# litellm.set_verbose is deprecated
 litellm.drop_params = True  # Drop unsupported params
 litellm.num_retries = 3  # Retry on connection errors
 litellm.request_timeout = 600  # Increase timeout to 10 minutes

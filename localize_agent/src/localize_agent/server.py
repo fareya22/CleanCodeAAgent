@@ -76,10 +76,12 @@ def analyze_repository():
         print(f"[API] 📄 Number of files: {len(files)}")
         print(f"{'='*60}\n")
         
-        # Use BatchAnalyzer with conservative settings to avoid rate limits
+        # Use BatchAnalyzer with optimized settings to handle AWS rate limits
         # max_workers=1: Sequential processing (no parallel to avoid rate limits)
-        # delay_between_files=3: 3 seconds between each file
-        batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=3)
+        # delay_between_files=5: 5 seconds between each file to avoid rate limiting
+        # max_retries=5: Aggressive retry strategy with exponential backoff
+        # retry_backoff=3: 3x exponential backoff (3s, 9s, 27s, 81s, 243s max)
+        batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3)
         all_results = batch_analyzer.analyze_repository(files, repo)
         
         # Cache results
@@ -148,14 +150,19 @@ def analyze_file():
         print(f"[API] Code length: {len(code_content)} characters")
         
         # Run analysis
-        issues = analyze_single_file(code_content, file_path)
+        result = analyze_single_file(code_content, file_path)
+        
+        # result is now a dict with 'issues' and 'summary'
+        issues = result.get('issues', [])
+        summary = result.get('summary', '')
         
         print(f"[API] Found {len(issues)} issues")
         
         return jsonify({
             "status": "success",
             "file": file_path,
-            "issues": issues
+            "issues": issues,
+            "summary": summary
         })
         
     except Exception as e:
@@ -169,10 +176,18 @@ def analyze_file():
 def analyze_single_file(code_content, file_path="unknown"):
     """
     Run your CrewAI agents on a single file
-    Returns list of issues with ranking
+    Returns dict with 'issues' list and 'summary' explanation text
     """
     print(f"[CREW] Starting analysis...")
     print(f"[CREW] Code length: {len(code_content)} characters")
+    
+    # Validate input
+    if not code_content or len(code_content.strip()) == 0:
+        print(f"[CREW] ERROR: Empty code content provided")
+        return {
+            "issues": [],
+            "summary": "Error: No code content to analyze."
+        }
     
     try:
         # Prepare input for your crew
@@ -180,12 +195,37 @@ def analyze_single_file(code_content, file_path="unknown"):
             "code": code_content
         }
         
-        # Run your LocalizeAgent crew
+        # Run your LocalizeAgent crew with error handling
         print(f"[CREW] Running LocalizeAgent crew...")
         crew = LocalizeAgent().crew()
         
         print(f"[CREW] Kicking off crew execution...")
-        result = crew.kickoff(inputs=inputs)
+        try:
+            result = crew.kickoff(inputs=inputs)
+        except ValueError as e:
+            if "None or empty" in str(e):
+                print(f"[CREW] LLM returned empty response: {e}")
+                print(f"[CREW] This usually means:")
+                print(f"  1. AWS Bedrock connection failed")
+                print(f"  2. LLM timed out or didn't respond")
+                print(f"  3. AWS credentials may be expired")
+                print(f"[CREW] Attempting file-based parsing fallback...")
+                # Try to use ranking_report.md as fallback
+                ranking_file = Path("ranking_report.md")
+                if ranking_file.exists():
+                    with open(ranking_file, 'r', encoding='utf-8') as f:
+                        report_content = f.read()
+                    issues = parse_ranking_report(report_content)
+                    if issues:
+                        return {
+                            "issues": issues,
+                            "summary": "Analysis completed using cached results (LLM connection failed)."
+                        }
+                # If no cached results, use heuristics
+                print(f"[CREW] No cached results available, falling back to heuristics...")
+                return create_fallback_issues(code_content, file_path)
+            else:
+                raise
         
         print(f"[CREW] Crew execution completed")
         print(f"[CREW] Result type: {type(result)}")
@@ -199,15 +239,45 @@ def analyze_single_file(code_content, file_path="unknown"):
                 result_text = result.json
             else:
                 result_text = str(result)
+
+            # Debug: log raw LLM / Crew output to understand parse failures
+            print("[CREW] RAW CREW RESULT:")
+            try:
+                print(result_text)
+            except Exception:
+                # In case result_text is not directly printable
+                print("[CREW] (RAW RESULT NOT PRINTABLE, type=", type(result_text), ")")
             
             print(f"[CREW] Result text length: {len(result_text)} characters")
             
-            # Try to parse as JSON directly
-            issues = json.loads(result_text) if isinstance(result_text, str) else result_text
+            # Try to extract and parse JSON array from the text
+            issues = []
+            summary = ""
+            if isinstance(result_text, str):
+                import re
+                # Extract JSON array
+                match = re.search(r"(\[\s*\{[\s\S]*?\}\s*\])", result_text)
+                if match:
+                    json_str = match.group(1)
+                    print(f"[CREW] Detected JSON array in output (length: {len(json_str)})")
+                    issues = json.loads(json_str)
+                    # Extract explanation text after JSON array
+                    after_json = result_text[match.end():].strip()
+                    if after_json:
+                        summary = after_json
+                        print(f"[CREW] Found explanation text (length: {len(summary)})")
+                else:
+                    # Fall back to parsing the whole string as JSON
+                    issues = json.loads(result_text)
+            else:
+                issues = result_text
             
             if isinstance(issues, list) and len(issues) > 0:
                 print(f"[CREW] ✅ Successfully parsed {len(issues)} issues from CrewOutput")
-                return issues
+                return {
+                    "issues": issues,
+                    "summary": summary
+                }
             else:
                 print(f"[CREW] CrewOutput parse unsuccessful, trying file-based parsing...")
                 
@@ -238,7 +308,11 @@ def analyze_single_file(code_content, file_path="unknown"):
             print(f"[CREW] No issues found in report, using fallback...")
             return create_fallback_issues(code_content, file_path)
         
-        return issues
+        # Return issues with empty summary (since report doesn't have explanatory text like LLM output)
+        return {
+            "issues": issues,
+            "summary": ""
+        }
         
     except Exception as e:
         print(f"[CREW] ERROR: {str(e)}")
@@ -298,7 +372,10 @@ def create_fallback_issues(code_content, file_path):
         })
     
     print(f"[FALLBACK] Created {len(issues)} basic issues using heuristics")
-    return issues
+    return {
+        "issues": issues,
+        "summary": "Issues detected using fallback heuristic analysis (LLM analysis not available)."
+    }
 
 def parse_ranking_report(report_text):
     """

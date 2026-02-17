@@ -4,14 +4,14 @@
 .cleancode-sidebar {
   position: fixed;
   top: 0;
-  left: 0;
+  right: 0;
   bottom: 0;
   width: 320px;
   background: #ffffff;
-  border-right: 1px solid #d0d7de;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  border-left: 1px solid #d0d7de;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
   z-index: 9999;
-  transform: translateX(-100%);
+  transform: translateX(100%);
   transition: transform 0.3s ease;
   display: flex;
   flex-direction: column;
@@ -377,28 +377,59 @@ body.cleancode-show .cleancode-sidebar {
   text-align: center;
   font-size: 11px;
   color: #57606a;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-pdf-btn {
+  background: linear-gradient(180deg, #0969da 0%, #0860ca 100%);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.download-pdf-btn:hover {
+  background: linear-gradient(180deg, #0860ca 0%, #0757ba 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.download-pdf-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.powered-by {
+  display: block;
 }
 
 
 .cleancode-toggle {
   position: fixed;
-  left: 0;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   background: #24292f;
   color: white;
   padding: 12px 8px;
-  border-radius: 0 6px 6px 0;
+  border-radius: 6px 0 0 6px;
   cursor: pointer;
   z-index: 9998;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.2);
-  transition: left 0.3s ease;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+  transition: right 0.3s ease;
   writing-mode: vertical-rl;
   text-orientation: mixed;
 }
 
 body.cleancode-show .cleancode-toggle {
-  left: 320px;
+  right: 320px;
 }
 
 .cleancode-toggle:hover {
@@ -608,6 +639,81 @@ body.cleancode-show .cleancode-toggle {
   margin-left: 8px;
 }
 
+/* Progressive Analysis UI */
+.current-file-analysis {
+  padding: 16px;
+  background: #f6f8fa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid #d0d7de;
+}
+
+.progress-info {
+  margin-bottom: 12px;
+}
+
+.file-name {
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 12px;
+  word-break: break-word;
+  font-size: 13px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0969da, #1f6feb);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #57606a;
+  text-align: center;
+}
+
+/* Spinner animation */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #0969da;
+  border-radius: 50%;
+  animation: spinner 0.6s linear infinite;
+  margin: 10px auto;
+}
+
+@keyframes spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.clean {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.no-issues {
+  text-align: center;
+}
+
 
 @media (max-width: 768px) {
   .cleancode-sidebar {
@@ -615,6 +721,6 @@ body.cleancode-show .cleancode-toggle {
   }
   
   body.cleancode-show .cleancode-toggle {
-    left: 100%;
+    right: 100%;
   }
 }
