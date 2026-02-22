@@ -60,7 +60,7 @@ class LocalizeAgent:
     
     def __init__(self):
         """Initialize with LLM configuration"""
-        super().__init__()
+        # Don't call super().__init__() - CrewBase handles initialization via metaclass
         self.llm = get_llm_with_fallback()
         self._print_llm_config()
     

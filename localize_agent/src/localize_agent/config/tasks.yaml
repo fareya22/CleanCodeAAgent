@@ -4,7 +4,10 @@ planning_task:
     1. Design Issue Identification Phase:
        - Specify which code elements to analyze (classes, methods, dependencies)
        - Define criteria for identifying modularity, complexity, information hiding, god class, and feature envy issues
-       - List specific metrics to measure (e.g., coupling, cohesion, class size, method dependencies)
+       - IMPORTANT: God Class should ONLY count business logic methods (exclude getters/setters). Do NOT flag model/DTO classes that only have getters/setters.
+       - Feature Envy: Method using 4+ fields from another class
+       - Information Hiding: Only flag ACTUAL PUBLIC FIELDS, not public methods
+       - List specific metrics to measure (e.g., coupling, cohesion, class size, business method count excluding getters/setters)
     
     2. Code Analysis Phase:
        - Specify dependencies and relationships to examine
@@ -21,13 +24,20 @@ planning_task:
        - Define criteria for ranking refactoring suggestions based on impact and feasibility
   
   expected_output: >
-    A structured analysis plan document containing: Issue Identification Strategy, Analysis Execution Plan, Prompt Construction Guidelines, Localization Criteria, and Ranking Strategy. Each section should be clearly defined and actionable.:
+    A structured analysis plan document containing: Issue Identification Strategy, Analysis Execution Plan, Prompt Construction Guidelines, Localization Criteria, and Ranking Strategy. Each section should be clearly defined and actionable.
 
   agent: planning_agent
 
 design_issue_identification_task:
   description: >
-    Conduct an initial review of the following code to identify design issues from the following categories: "modularity", "complexity", "information hiding", "god class", and "feature envy". Suggest an appropriate refactoring type based on the identified issue(s), selected from "move method", "extract class", "extract method", "parameterize variable", "inline variable", or "inline method". The output must be structured and easily parsable for subsequent tasks.
+    Conduct an initial review of the following code to identify design issues from the following categories: "modularity", "complexity", "information hiding", "god class", and "feature envy". 
+    
+    IMPORTANT GUIDELINES:
+    - For "god class": Count ONLY business logic methods (exclude getters/setters like get*, set*, is*). Only flag if business method count > 10. Do NOT flag model/DTO classes.
+    - For "feature envy": Look for methods accessing 4+ fields from another class.
+    - For "information hiding": Only flag ACTUAL PUBLIC FIELDS, not public methods.
+    
+    Suggest an appropriate refactoring type based on the identified issue(s), selected from "move method", "extract class", "extract method", "parameterize variable", "inline variable", or "inline method". The output must be structured and easily parsable for subsequent tasks.
     
     Code to analyze:
     {code}
@@ -40,7 +50,13 @@ design_issue_identification_task:
 
 code_analysis_task:
   description: >
-    Using the planning instructions and the output from the design_issue_identification_agent (which provides the identified design issues and the corresponding refactoring recommendation), perform a targeted analysis of the provided code. Focus on relevant metrics such as fan-in/fan-out, method call dependencies, variable usage, and class coupling. Use the CountMethods tool to determine the number of methods and the VariableUsage tool to analyze variable usage. 
+    Using the planning instructions and the output from the design_issue_identification_agent (which provides the identified design issues and the corresponding refactoring recommendation), perform a targeted analysis of the provided code. Focus on relevant metrics such as fan-in/fan-out, method call dependencies, variable usage, and class coupling. Use the CountMethods tool to determine the number of BUSINESS LOGIC methods (excluding getters/setters) and the VariableUsage tool to analyze variable usage. 
+
+    IMPORTANT GUIDELINES FOR METRIC ANALYSIS:
+    - For God Class: Count ONLY business logic methods (exclude get*, set*, is* patterns). Only report as God Class issue if business method count > 10 AND the class is not purely a model/DTO.
+    - For Feature Envy: Count cross-class field accesses (4+ fields from another class).
+    - For Information Hiding: Count ACTUAL PUBLIC FIELDS (not public methods).
+    - Always distinguish between model/DTO classes and business logic classes.
 
     Code to analyze:
     {code}
@@ -50,8 +66,8 @@ code_analysis_task:
   expected_output: >
     A comprehensive and structured analysis report that includes:
       - Reasoning over the tool outputs, explaining their relevance to the identified design issue.
-      - Quantitative metrics (e.g., fan-in, fan-out, dependency counts) relevant to the design issue.
-      - The number of methods within the project based on the CountMethods tool.
+      - Quantitative metrics (e.g., business logic method count excluding getters/setters, fan-in, fan-out, dependency counts) relevant to the design issue.
+      - Clear distinction: "X business logic methods (excluding Y getters/setters)" for God Class checks.
       - Qualitative commentary on how these metrics reflect the impact of the identified design issue.
       - A clear explanation linking the analysis results with the recommended refactoring type.
   agent: code_analyzer_agent

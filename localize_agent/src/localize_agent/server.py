@@ -189,129 +189,18 @@ def analyze_single_file(code_content, file_path="unknown"):
             "summary": "Error: No code content to analyze."
         }
     
+    # Use BatchAnalyzer for consistency (includes filtering)
+    batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=0)
+    
     try:
-        # Prepare input for your crew
-        inputs = {
-            "code": code_content
-        }
+        # Analyze using batch analyzer (includes filtering)
+        issues = batch_analyzer.analyze_single_file(code_content, file_path)
         
-        # Run your LocalizeAgent crew with error handling
-        print(f"[CREW] Running LocalizeAgent crew...")
-        crew = LocalizeAgent().crew()
+        print(f"[CREW] ✅ Analysis complete: {len(issues)} issues found")
         
-        print(f"[CREW] Kicking off crew execution...")
-        try:
-            result = crew.kickoff(inputs=inputs)
-        except ValueError as e:
-            if "None or empty" in str(e):
-                print(f"[CREW] LLM returned empty response: {e}")
-                print(f"[CREW] This usually means:")
-                print(f"  1. AWS Bedrock connection failed")
-                print(f"  2. LLM timed out or didn't respond")
-                print(f"  3. AWS credentials may be expired")
-                print(f"[CREW] Attempting file-based parsing fallback...")
-                # Try to use ranking_report.md as fallback
-                ranking_file = Path("ranking_report.md")
-                if ranking_file.exists():
-                    with open(ranking_file, 'r', encoding='utf-8') as f:
-                        report_content = f.read()
-                    issues = parse_ranking_report(report_content)
-                    if issues:
-                        return {
-                            "issues": issues,
-                            "summary": "Analysis completed using cached results (LLM connection failed)."
-                        }
-                # If no cached results, use heuristics
-                print(f"[CREW] No cached results available, falling back to heuristics...")
-                return create_fallback_issues(code_content, file_path)
-            else:
-                raise
-        
-        print(f"[CREW] Crew execution completed")
-        print(f"[CREW] Result type: {type(result)}")
-        
-        # Try to get data directly from CrewOutput
-        try:
-            # CrewOutput has a raw property or can be converted to string
-            if hasattr(result, 'raw'):
-                result_text = result.raw
-            elif hasattr(result, 'json'):
-                result_text = result.json
-            else:
-                result_text = str(result)
-
-            # Debug: log raw LLM / Crew output to understand parse failures
-            print("[CREW] RAW CREW RESULT:")
-            try:
-                print(result_text)
-            except Exception:
-                # In case result_text is not directly printable
-                print("[CREW] (RAW RESULT NOT PRINTABLE, type=", type(result_text), ")")
-            
-            print(f"[CREW] Result text length: {len(result_text)} characters")
-            
-            # Try to extract and parse JSON array from the text
-            issues = []
-            summary = ""
-            if isinstance(result_text, str):
-                import re
-                # Extract JSON array
-                match = re.search(r"(\[\s*\{[\s\S]*?\}\s*\])", result_text)
-                if match:
-                    json_str = match.group(1)
-                    print(f"[CREW] Detected JSON array in output (length: {len(json_str)})")
-                    issues = json.loads(json_str)
-                    # Extract explanation text after JSON array
-                    after_json = result_text[match.end():].strip()
-                    if after_json:
-                        summary = after_json
-                        print(f"[CREW] Found explanation text (length: {len(summary)})")
-                else:
-                    # Fall back to parsing the whole string as JSON
-                    issues = json.loads(result_text)
-            else:
-                issues = result_text
-            
-            if isinstance(issues, list) and len(issues) > 0:
-                print(f"[CREW] ✅ Successfully parsed {len(issues)} issues from CrewOutput")
-                return {
-                    "issues": issues,
-                    "summary": summary
-                }
-            else:
-                print(f"[CREW] CrewOutput parse unsuccessful, trying file-based parsing...")
-                
-        except Exception as parse_error:
-            print(f"[CREW] Direct parsing failed: {parse_error}")
-            print(f"[CREW] Falling back to file-based parsing...")
-        
-        # Fallback: Parse the ranking_report.md file
-        ranking_file = Path("ranking_report.md")
-        
-        if not ranking_file.exists():
-            print(f"[CREW] WARNING: ranking_report.md not found")
-            print(f"[CREW] Attempting to use fallback analysis...")
-            return create_fallback_issues(code_content, file_path)
-        
-        with open(ranking_file, 'r', encoding='utf-8') as f:
-            report_content = f.read()
-        
-        print(f"[CREW] Reading ranking report...")
-        print(f"[CREW] Report length: {len(report_content)} characters")
-        
-        # Extract JSON from the report
-        issues = parse_ranking_report(report_content)
-        
-        print(f"[CREW] Parsed {len(issues)} issues from report")
-        
-        if not issues:
-            print(f"[CREW] No issues found in report, using fallback...")
-            return create_fallback_issues(code_content, file_path)
-        
-        # Return issues with empty summary (since report doesn't have explanatory text like LLM output)
         return {
             "issues": issues,
-            "summary": ""
+            "summary": f"Analysis completed successfully. Found {len(issues)} issues."
         }
         
     except Exception as e:
