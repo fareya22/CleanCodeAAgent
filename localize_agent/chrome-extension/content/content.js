@@ -92,7 +92,7 @@ function createSidebar() {
       <div class="cleancode-footer">
         <div class="feedback-section">
           <div class="feedback-toggle" id="feedback-toggle">
-            💬 Report Incorrect Detection
+             Give feedback
           </div>
           <div class="feedback-form hidden" id="feedback-form">
             <input type="email" id="feedback-email" class="feedback-input" placeholder="Your email" />
