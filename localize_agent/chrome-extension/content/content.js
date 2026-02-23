@@ -90,6 +90,19 @@ function createSidebar() {
       </div>
       
       <div class="cleancode-footer">
+        <div class="feedback-section">
+          <div class="feedback-toggle" id="feedback-toggle">
+            💬 Report Incorrect Detection
+          </div>
+          <div class="feedback-form hidden" id="feedback-form">
+            <input type="email" id="feedback-email" class="feedback-input" placeholder="Your email" />
+            <textarea id="feedback-comment" class="feedback-input feedback-textarea" placeholder="Describe the incorrect detection..."></textarea>
+            <div class="feedback-actions">
+              <button class="feedback-submit-btn" id="feedback-submit-btn">Send Feedback</button>
+              <span class="feedback-status" id="feedback-status"></span>
+            </div>
+          </div>
+        </div>
         <button class="download-pdf-btn" id="download-pdf-btn" title="Download Analysis Report as PDF">
           📄 Download PDF Report
         </button>
@@ -119,6 +132,22 @@ function createSidebar() {
   $('#download-pdf-btn').click(function() {
     console.log('[CleanCodeAgent] Generating PDF report...');
     downloadAnalysisReport();
+  });
+
+  // Feedback toggle
+  $('#feedback-toggle').click(function() {
+    $('#feedback-form').toggleClass('hidden');
+  });
+
+  // Feedback submit
+  $('#feedback-submit-btn').click(function() {
+    const email = $('#feedback-email').val().trim();
+    const comment = $('#feedback-comment').val().trim();
+    if (!email || !comment) {
+      $('#feedback-status').text('Please fill in both fields.').css('color', '#cf222e');
+      return;
+    }
+    submitFeedback(email, comment);
   });
   
   // Toggle button click
@@ -806,6 +835,42 @@ function getSeverityLabel(rank) {
 function showFileDetails(fileData) {
   console.log('[CleanCodeAgent] File selected:', fileData);
   // TODO: Show file details in a panel
+}
+
+// ============================================
+// USER FEEDBACK
+// ============================================
+
+function submitFeedback(email, comment) {
+  const btn = $('#feedback-submit-btn');
+  const status = $('#feedback-status');
+  btn.prop('disabled', true).text('Sending...');
+  status.text('').css('color', '');
+
+  const apiUrl = API_URL + '/feedback';
+
+  fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, comment })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.status === 'success') {
+        status.text('Feedback sent!').css('color', '#1a7f37');
+        $('#feedback-email').val('');
+        $('#feedback-comment').val('');
+        setTimeout(() => $('#feedback-form').addClass('hidden'), 1500);
+      } else {
+        status.text(data.message || 'Error sending feedback.').css('color', '#cf222e');
+      }
+    })
+    .catch(() => {
+      status.text('Network error. Please try again.').css('color', '#cf222e');
+    })
+    .finally(() => {
+      btn.prop('disabled', false).text('Send Feedback');
+    });
 }
 
 // ============================================

@@ -6,7 +6,8 @@ authors = [{ name = "Fraol Batole", email = "fraolahm@gmail.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "crewai[tools]>=0.108.0,<1.0.0",
-    "javalang"
+    "javalang",
+    "pymongo>=4.0.0",
 ]
 
 [project.scripts]

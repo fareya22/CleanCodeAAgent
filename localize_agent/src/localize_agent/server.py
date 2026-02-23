@@ -9,6 +9,8 @@ import os
 import json
 import traceback
 from pathlib import Path
+from datetime import datetime, timezone
+from pymongo import MongoClient
 
 # Import your existing crew - handle both direct run and package import
 try:
@@ -25,6 +27,19 @@ CORS(app)  # Allow Chrome extension to call this API
 # Store analysis results temporarily
 analysis_cache = {}
 
+# MongoDB connection
+MONGO_URI = "mongodb+srv://bsse1331_db_user:4ZvgqSSHNTOoKz9C@cluster0.emuedcv.mongodb.net/"
+_mongo_client = None
+_feedback_collection = None
+
+def get_feedback_collection():
+    global _mongo_client, _feedback_collection
+    if _feedback_collection is None:
+        _mongo_client = MongoClient(MONGO_URI)
+        db = _mongo_client["cleancode_agent"]
+        _feedback_collection = db["feedback"]
+    return _feedback_collection
+
 @app.route('/health', methods=['GET'])
 def health_check():
     """Check if server is running"""
@@ -33,6 +48,58 @@ def health_check():
         "message": "CleanCodeAgent API is running",
         "version": "1.0.0"
     })
+
+@app.route('/feedback', methods=['GET', 'POST'])
+def submit_feedback():
+    """
+    Save user feedback to MongoDB
+
+    Request JSON:
+    {
+        "email": "user@example.com",
+        "comment": "The analysis missed a god class in UserService.java"
+    }
+    """
+    try:
+        if request.method == 'GET':
+            return jsonify({
+                "status": "info",
+                "message": "Feedback endpoint is active. Send a POST request with {email, comment}."
+            })
+
+        data = request.json
+        email = (data.get('email') or '').strip()
+        comment = (data.get('comment') or '').strip()
+
+        if not email or not comment:
+            return jsonify({
+                "status": "error",
+                "message": "email and comment are required"
+            }), 400
+
+        doc = {
+            "email": email,
+            "comment": comment,
+            "created_at": datetime.now(timezone.utc)
+        }
+
+        collection = get_feedback_collection()
+        result = collection.insert_one(doc)
+
+        print(f"[FEEDBACK] Saved feedback from {email} (id={result.inserted_id})")
+
+        return jsonify({
+            "status": "success",
+            "message": "Feedback submitted successfully"
+        })
+
+    except Exception as e:
+        print(f"[FEEDBACK] ERROR: {str(e)}")
+        traceback.print_exc()
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
 
 @app.route('/analyze', methods=['POST'])
 def analyze_repository():
@@ -394,6 +461,7 @@ if __name__ == '__main__':
     print("  Endpoints:")
     print("    POST /analyze       - Analyze multiple files")
     print("    POST /analyze-file  - Analyze single file")
+    print("    POST /feedback      - Submit user feedback")
     print()
     print("="*60)
     print()
