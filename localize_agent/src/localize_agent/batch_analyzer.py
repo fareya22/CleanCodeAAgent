@@ -8,24 +8,52 @@ from pathlib import Path
 from typing import List, Dict, Any
 try:
     from localize_agent.crew import LocalizeAgent
+    from localize_agent.tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
 except ModuleNotFoundError:
     from crew import LocalizeAgent
+    from tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import traceback
+
+
+def _compute_metrics(code_content: str) -> str:
+    """
+    Run all static analysis tools ONCE in Python and return a compact summary string.
+    This avoids the ReAct tool-call loop that caused Haiku to return empty responses
+    (agents were calling tools 9 times, re-sending the full source code each time).
+    """
+    parts = []
+    try:
+        parts.append(CountMethods()._run(code_content))
+    except Exception as e:
+        parts.append(f"CountMethods error: {e}")
+    try:
+        parts.append(VariableUsage()._run(code_content))
+    except Exception as e:
+        parts.append(f"VariableUsage error: {e}")
+    try:
+        parts.append(FanInFanOutAnalysis()._run(code_content))
+    except Exception as e:
+        parts.append(f"FanInFanOutAnalysis error: {e}")
+    try:
+        parts.append(ClassCouplingAnalysis()._run(code_content))
+    except Exception as e:
+        parts.append(f"ClassCouplingAnalysis error: {e}")
+    return "\n".join(parts)
 
 
 class BatchAnalyzer:
     """Analyze multiple Java files from a repository"""
     
-    def __init__(self, max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3, repo_info=None):
+    def __init__(self, max_workers=1, delay_between_files=2, max_retries=3, retry_backoff=2, repo_info=None):
         """
         Initialize batch analyzer
-        
+
         Args:
             max_workers: Maximum number of parallel analysis workers (default 1 to avoid rate limits)
-            delay_between_files: Seconds to wait between file analyses (default 5 to avoid rate limits)
-            max_retries: Maximum number of retries for failed LLM calls (default 5 for AWS stability)
-            retry_backoff: Backoff multiplier for retry delays (default 3 for aggressive backoff)
+            delay_between_files: Seconds to wait between file analyses (reduced from 5 to 2)
+            max_retries: Maximum number of retries for failed LLM calls (reduced from 5 to 3)
+            retry_backoff: Backoff multiplier for retry delays (reduced from 3 to 2; total wait: 1+2=3s)
             repo_info: Optional dict with 'owner', 'repo', 'branch' for GitHub URL generation (default None)
         """
         self.max_workers = max_workers
@@ -160,24 +188,55 @@ class BatchAnalyzer:
             return self.analysis_cache[cache_key]
         
         last_error = None
-        
+
+        # Delete stale .md output files from previous runs before starting.
+        # If ranking_report.md is left over from a different file, the fallback
+        # parser would silently return that file's results for THIS file.
+        _stale_files = [
+            'ranking_report.md', 'localization_report.md', 'prompt_report.md',
+            'analysis_report.md', 'issue_report.md', 'planning_report.md'
+        ]
+        for _f in _stale_files:
+            _p = Path(_f)
+            if _p.exists():
+                try:
+                    _p.unlink()
+                    print(f"    [CLEAN] Deleted stale {_f}")
+                except Exception:
+                    pass
+
         # Retry logic with exponential backoff
         for attempt in range(1, self.max_retries + 1):
             try:
                 print(f"    [Attempt {attempt}/{self.max_retries}] Running crew analysis...")
-                
+
+                # Pre-compute all metrics in Python (deterministic, no LLM loop)
+                # This prevents the code_analyzer_agent from calling tools 9 times and
+                # overflowing Haiku's context with repeated source code payloads.
+                metrics_summary = _compute_metrics(code_content)
+                print(f"    [METRICS] Pre-computed static analysis:\n{metrics_summary[:200]}...")
+
                 # Prepare input for crew
                 inputs = {
-                    "code": code_content
+                    "code": code_content,
+                    "metrics": metrics_summary
                 }
-                
+
                 # Run LocalizeAgent crew
                 crew = LocalizeAgent().crew()
                 result = crew.kickoff(inputs=inputs)
-                
+
+                # Print combined pipeline summary for this file
+                self._print_pipeline_summary(file_path)
+
                 # Parse result
                 raw_issues = self._parse_crew_output(result, file_path)
                 print(f"    [FILTER] Parsed {len(raw_issues)} raw issues from LLM")
+
+                # If LLM succeeded but JSON parsing produced nothing, run heuristic fallback
+                if not raw_issues:
+                    print(f"    [PARSE] LLM returned no parseable issues — running heuristic fallback...")
+                    raw_issues = self._create_basic_issues(code_content, file_path)
                 
                 # Filter and validate issues
                 filtered_issues = self._filter_and_validate_issues(raw_issues, code_content, file_path)
@@ -198,16 +257,23 @@ class BatchAnalyzer:
             except Exception as e:
                 last_error = str(e)
                 print(f"    ⚠️  Attempt {attempt} failed: {last_error}")
-                
-                # Check if this is an LLM connection error
-                if attempt < self.max_retries and self._is_llm_error(last_error):
-                    # Calculate backoff time
-                    backoff_time = self.retry_backoff ** (attempt - 1)
-                    print(f"    ⏳ LLM error detected. Retrying in {backoff_time}s...")
-                    time.sleep(backoff_time)
+
+                if attempt < self.max_retries:
+                    if self._is_rate_limit_error(last_error):
+                        # Rate limit / quota exhausted — wait 60s for token refill
+                        wait_time = 60
+                        print(f"    ⏳ Rate limit detected. Waiting {wait_time}s for quota refill...")
+                        time.sleep(wait_time)
+                    elif self._is_llm_error(last_error):
+                        # Other LLM/connection error — standard backoff
+                        backoff_time = self.retry_backoff ** (attempt - 1)
+                        print(f"    ⏳ LLM error detected. Retrying in {backoff_time}s...")
+                        time.sleep(backoff_time)
+                    else:
+                        # Non-LLM error (parse error, etc.) — break immediately
+                        break
                     continue
                 else:
-                    # No more retries or not an LLM error
                     break
         
         # All retries exhausted or other error - use fallback
@@ -244,12 +310,43 @@ class BatchAnalyzer:
             'no response',
             'rate limit'
         ]
-        
+
         error_lower = error_msg.lower()
         return any(keyword in error_lower for keyword in llm_error_keywords)
+
+    def _is_rate_limit_error(self, error_msg: str) -> bool:
+        """
+        Detect rate-limit / quota-exhausted errors that need a long wait (60s)
+        rather than the standard short backoff.
+        Covers Gemini, OpenAI, Bedrock, and generic HTTP 429 patterns.
+        """
+        rate_limit_keywords = [
+            '429',
+            'rate limit',
+            'ratelimit',
+            'quota',
+            'resource_exhausted',
+            'resource exhausted',
+            'too many requests',
+            'requests per minute',
+            'tokens per minute',
+            'model is overloaded',
+            'capacity',
+            'overloaded',
+            'retry after',
+        ]
+        error_lower = error_msg.lower()
+        return any(kw in error_lower for kw in rate_limit_keywords)
     
     def _parse_crew_output(self, result, file_path: str) -> List[Dict[str, Any]]:
-        """Parse CrewAI output to extract issues"""
+        """Parse CrewAI output to extract issues.
+
+        Priority:
+        1. result.raw  — in-memory output of the last task (ranking_task)
+        2. ranking_report.md — disk copy of ranking_task output
+        3. localization_report.md — disk copy of localization_task output
+           (ranking_task may have failed; localization output is still valid)
+        """
         try:
             # Try to get data from CrewOutput
             if hasattr(result, 'raw'):
@@ -258,24 +355,23 @@ class BatchAnalyzer:
                 result_text = result.json
             else:
                 result_text = str(result)
-            
+
             # Validate we have content
             if not result_text or result_text.strip() == '' or result_text == 'None':
-                print(f"    [PARSE] Empty response from LLM, trying fallback...")
-                return self._parse_ranking_report()
-            
+                print(f"    [PARSE] Empty response from LLM, trying file fallbacks...")
+                return self._parse_report_files()
+
             # Try to parse as JSON
             try:
                 issues = json.loads(result_text) if isinstance(result_text, str) else result_text
-                
+
                 if isinstance(issues, list) and len(issues) > 0:
                     print(f"    [PARSE] ✅ Successfully parsed {len(issues)} issues from LLM output")
                     return issues
             except json.JSONDecodeError:
                 print(f"    [PARSE] JSON decode failed, trying regex extraction...")
-                # Try to extract JSON from response
                 import re
-                match = re.search(r'(\[\s*\{[\s\S]*?\}\s*\])', result_text)
+                match = re.search(r'(\[\s*\{[\s\S]*\}\s*\])', result_text)
                 if match:
                     try:
                         issues = json.loads(match.group(1))
@@ -284,58 +380,141 @@ class BatchAnalyzer:
                             return issues
                     except:
                         pass
-            
-            # Fallback: read from ranking_report.md
-            print(f"    [PARSE] Falling back to ranking_report.md parsing...")
-            return self._parse_ranking_report()
-            
+
+            # Fallback: try report files on disk
+            print(f"    [PARSE] Falling back to report file parsing...")
+            return self._parse_report_files()
+
         except Exception as e:
             print(f"    [PARSE ERROR] {str(e)}")
-            return self._parse_ranking_report()
-    
-    def _parse_ranking_report(self) -> List[Dict[str, Any]]:
-        """Parse ranking_report.md file"""
+            return self._parse_report_files()
+
+    def _parse_report_files(self) -> List[Dict[str, Any]]:
+        """
+        Fallback parser: try ranking_report.md first, then localization_report.md.
+        ranking_report.md = ranking_task output (ranked issues, ideal)
+        localization_report.md = localization_task output (unranked — still useful)
+        """
         import re
-        
+
+        for report_name in ['ranking_report.md', 'localization_report.md']:
+            report_file = Path(report_name)
+            if not report_file.exists():
+                continue
+            try:
+                content = report_file.read_text(encoding='utf-8')
+                match = re.search(r'(\[\s*\{[\s\S]*\}\s*\])', content)
+                if match:
+                    issues = json.loads(match.group(1))
+                    if isinstance(issues, list) and len(issues) > 0:
+                        print(f"    [PARSE] ✅ Loaded {len(issues)} issues from {report_name}")
+                        # Ensure every issue has a rank field
+                        for i, issue in enumerate(issues, 1):
+                            if 'rank' not in issue:
+                                issue['rank'] = i
+                        return issues
+            except Exception as e:
+                print(f"    [PARSE] Failed to read {report_name}: {e}")
+                continue
+
+        print("[WARN] No valid report files found")
+        return []
+
+    def _print_pipeline_summary(self, file_path: str) -> None:
+        """
+        Print a combined terminal report showing what each pipeline stage found.
+        Reads the intermediate .md files written by the crew tasks.
+        """
+        import re
+
+        sep = "=" * 60
+        print(f"\n{sep}")
+        print(f"  PIPELINE SUMMARY — {file_path}")
+        print(sep)
+
+        # ── Stage 1: Issue Identification ────────────────────────────
+        print("\n[STAGE 1] Design Issue Identification (issue_report.md)")
         try:
-            ranking_file = Path("ranking_report.md")
-            
-            if not ranking_file.exists():
-                print("[WARN] ranking_report.md not found")
-                return []
-            
-            with open(ranking_file, 'r', encoding='utf-8') as f:
-                report_content = f.read()
-            
-            # Try to find JSON array
-            match = re.search(r'(\[\s*\{[\s\S]*?\}\s*\])', report_content)
-            
-            if match:
-                json_str = match.group(1)
-                issues = json.loads(json_str)
-                
-                if isinstance(issues, list):
-                    return issues
-            
-            return []
-            
+            content = Path("issue_report.md").read_text(encoding="utf-8")
+            # Extract the JSON object {design_issues, refactoring_types}
+            m = re.search(r'\{[\s\S]*?"design_issues"[\s\S]*?\}', content)
+            if m:
+                identified = json.loads(m.group(0))
+                issues_found = identified.get("design_issues", [])
+                ref_types = identified.get("refactoring_types", identified.get("refactoring", []))
+                print(f"  Issues identified : {issues_found}")
+                print(f"  Refactoring types : {ref_types}")
+            else:
+                print(f"  (raw): {content[:300].strip()}")
         except Exception as e:
-            print(f"[REPORT PARSE ERROR] {str(e)}")
-            return []
+            print(f"  (not available: {e})")
+
+        # ── Stage 2: Code Analysis ────────────────────────────────────
+        print("\n[STAGE 2] Code Analysis (analysis_report.md)")
+        try:
+            content = Path("analysis_report.md").read_text(encoding="utf-8")
+            # Print first 400 chars of the analysis narrative
+            print(f"  {content[:400].strip()}")
+        except Exception as e:
+            print(f"  (not available: {e})")
+
+        # ── Stage 3: Localization ─────────────────────────────────────
+        print("\n[STAGE 3] Issue Localization (localization_report.md)")
+        try:
+            content = Path("localization_report.md").read_text(encoding="utf-8")
+            m = re.search(r'(\[\s*\{[\s\S]*\}\s*\])', content)
+            if m:
+                loc_issues = json.loads(m.group(1))
+                print(f"  Localized {len(loc_issues)} issue(s):")
+                for item in loc_issues:
+                    cname = item.get("Class name", "?")
+                    fname = item.get("Function name", "?")
+                    rtype = item.get("refactoring_type", "?")
+                    line  = item.get("line", "?")
+                    print(f"    • {cname}.{fname}  [{rtype}]  line {line}")
+            else:
+                print(f"  (raw): {content[:300].strip()}")
+        except Exception as e:
+            print(f"  (not available: {e})")
+
+        # ── Stage 4: Ranking ──────────────────────────────────────────
+        print("\n[STAGE 4] Ranked Issues (ranking_report.md)")
+        try:
+            content = Path("ranking_report.md").read_text(encoding="utf-8")
+            m = re.search(r'(\[\s*\{[\s\S]*\}\s*\])', content)
+            if m:
+                ranked = json.loads(m.group(1))
+                print(f"  Final ranking ({len(ranked)} issue(s)):")
+                for item in sorted(ranked, key=lambda x: x.get("rank", 99)):
+                    rank  = item.get("rank", "?")
+                    cname = item.get("Class name", "?")
+                    fname = item.get("Function name", "?")
+                    rtype = item.get("refactoring_type", "?")
+                    line  = item.get("line", "?")
+                    rat   = item.get("rationale", "")[:80]
+                    print(f"    #{rank}  {cname}.{fname}  [{rtype}]  line {line}")
+                    print(f"         {rat}")
+            else:
+                print(f"  (raw): {content[:300].strip()}")
+        except Exception as e:
+            print(f"  (not available: {e})")
+
+        print(f"\n{sep}\n")
     
     def _create_basic_issues(self, code_content: str, file_path: str) -> List[Dict[str, Any]]:
         """Create basic issues using heuristics when LLM fails"""
+        import re
+
         issues = []
-        
         lines = code_content.split('\n')
         class_name = file_path.split('/')[-1].replace('.java', '')
-        
-        # Check for long methods
+
+        # ── 1. Long methods → extract method ─────────────────────────────
         in_method = False
         method_line_count = 0
         method_name = ""
         method_start_line = 0
-        
+
         for i, line in enumerate(lines, 1):
             if 'public ' in line and '(' in line and '{' in line:
                 in_method = True
@@ -351,27 +530,137 @@ class BatchAnalyzer:
                             "Function name": method_name,
                             "Function signature": f"{method_name}(...)",
                             "refactoring_type": "extract method",
-                            "rationale": f"Method has {method_line_count} lines. Consider extracting smaller methods for better readability.",
+                            "rationale": f"Method has {method_line_count} lines. Consider extracting smaller methods.",
                             "rank": len(issues) + 1,
                             "severity": "medium",
                             "line": method_start_line
                         })
                     in_method = False
-        
-        # Check for god class
-        method_count = code_content.count('public ') + code_content.count('private ')
-        if method_count > 12:
+
+        # ── 2. God class → extract class ──────────────────────────────────
+        method_decl_re = re.compile(
+            r'\b(?:public|private|protected)\s+(?:static\s+)?(?:\w+(?:<[^>]*>)?)\s+(\w+)\s*\('
+        )
+        all_method_names = method_decl_re.findall(code_content)
+        business_methods = [
+            m for m in all_method_names
+            if not (
+                (m.startswith('get') and len(m) > 3) or
+                (m.startswith('set') and len(m) > 3) or
+                (m.lower().startswith('is') and len(m) > 2)
+            )
+        ]
+        method_count = len(business_methods)
+        if method_count > 5:
             issues.append({
                 "Class name": class_name,
                 "Function name": "N/A",
                 "Function signature": "class-level",
                 "refactoring_type": "extract class",
-                "rationale": f"Class has {method_count} methods. Consider splitting responsibilities into multiple classes.",
+                "rationale": f"Class has {method_count} methods. Consider splitting responsibilities.",
                 "rank": len(issues) + 1,
                 "severity": "high",
                 "line": 1
             })
-        
+
+        # ── 3. Inline variable opportunities ─────────────────────────────
+        # Detect: a primitive/String variable assigned on one line and referenced
+        # only ONCE in the next 1-3 lines (classic inline candidate).
+        inline_pattern = re.compile(
+            r'^\s*(int|long|double|float|boolean|String)\s+(\w+)\s*=\s*.+;'
+        )
+        for i, line in enumerate(lines):
+            m = inline_pattern.match(line)
+            if not m:
+                continue
+            var_name = m.group(2)
+            # Count usages in the following 3 lines
+            next_chunk = '\n'.join(lines[i + 1: i + 4])
+            usage_count = len(re.findall(r'\b' + re.escape(var_name) + r'\b', next_chunk))
+            # Also count usage in remaining file (skip the first usage)
+            total_usages = len(re.findall(
+                r'\b' + re.escape(var_name) + r'\b',
+                '\n'.join(lines[i + 1:])
+            ))
+            if usage_count == 1 and total_usages == 1:
+                issues.append({
+                    "Class name": class_name,
+                    "Function name": "main",
+                    "Function signature": "main(String[] args)",
+                    "refactoring_type": "inline variable",
+                    "rationale": (
+                        f"Variable '{var_name}' is assigned once and used exactly once "
+                        "immediately after — it can be inlined to remove unnecessary indirection."
+                    ),
+                    "rank": len(issues) + 1,
+                    "severity": "low",
+                    "line": i + 1
+                })
+
+        # ── 4. Public field access on external objects → information hiding ─
+        # Detect: someObject.field = value  or  someObject.field  used as expression
+        pub_field_pattern = re.compile(r'\b(\w+)\.([a-z]\w*)\s*=\s*')
+        seen_objects: set = set()
+        for i, line in enumerate(lines, 1):
+            for m in pub_field_pattern.finditer(line):
+                obj_name = m.group(1)
+                field_name = m.group(2)
+                # Skip "this.field" and already-reported objects
+                if obj_name == 'this' or obj_name in seen_objects:
+                    continue
+                # Skip known Java built-ins / framework names
+                if obj_name[0].isupper():   # uppercase → class-level, not instance
+                    continue
+                seen_objects.add(obj_name)
+                issues.append({
+                    "Class name": class_name,
+                    "Function name": "main",
+                    "Function signature": "main(String[] args)",
+                    "refactoring_type": "extract class",
+                    "rationale": (
+                        f"Direct assignment to public field '{obj_name}.{field_name}' "
+                        "bypasses encapsulation. The target class should expose a "
+                        "constructor or setter instead of public fields."
+                    ),
+                    "rank": len(issues) + 1,
+                    "severity": "medium",
+                    "line": i
+                })
+
+        # ── 5. Class-level public instance fields → information hiding ───────
+        # Detect: lines like  public String name;  (no parenthesis = not a method)
+        pub_field_decl_re = re.compile(
+            r'^\s*public\s+(?!(?:static\s+)?(?:class|interface|enum)\b)'
+            r'(?:(?:static|final)\s+)*'
+            r'(?!void\b)(\w+(?:<[^>]*>)?)\s+(\w+)\s*;'
+        )
+        pub_fields_found = []
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if stripped.startswith('//') or stripped.startswith('*'):
+                continue
+            m = pub_field_decl_re.match(line)
+            if m:
+                pub_fields_found.append((m.group(2), i))
+
+        if pub_fields_found:
+            field_list = ', '.join(f"'{f}'" for f, _ in pub_fields_found[:5])
+            suffix = f" and {len(pub_fields_found) - 5} more" if len(pub_fields_found) > 5 else ""
+            issues.append({
+                "Class name": class_name,
+                "Function name": "N/A",
+                "Function signature": "class-level",
+                "refactoring_type": "extract class",
+                "rationale": (
+                    f"Information hiding violation: {len(pub_fields_found)} public instance "
+                    f"field(s) found ({field_list}{suffix}). Fields should be private with "
+                    "getter/setter access to preserve encapsulation."
+                ),
+                "rank": len(issues) + 1,
+                "severity": "medium",
+                "line": pub_fields_found[0][1]
+            })
+
         return issues
     
     def _find_function_line(self, code_content: str, issue: dict) -> int:
@@ -526,12 +815,12 @@ class BatchAnalyzer:
             
             skip_reason = None
             
-            # Filter 1: Skip getter/setter methods flagged for information hiding
+            # Filter 1: Skip getter/setter methods flagged for information_hiding ONLY.
+            # Do NOT filter move_method — a method like getGreeting() that starts with
+            # "get" may still be a real business-logic method that belongs elsewhere.
             if self._is_getter_setter(func_name):
                 if 'information hiding' in refactoring_type.lower() or 'information hiding' in rationale:
                     skip_reason = f"Getter/Setter with info hiding: {func_name}"
-                elif 'move method' in refactoring_type.lower():
-                    skip_reason = f"Getter/Setter with move method: {func_name}"
             
             # Filter 2: Validate class name exists in code
             if class_name and class_name not in actual_classes:
@@ -542,14 +831,18 @@ class BatchAnalyzer:
             if is_model_class and 'god class' in rationale:
                 skip_reason = f"God class on Model/DTO class"
             
-            # Filter 4: Skip feature envy on own class (not on another class)
+            # Filter 4: Skip feature envy ONLY when the method accesses fields from its
+            # OWN class (which is not feature envy at all).
+            # OLD BUG: checked `class_name in rationale` — the class name always appears
+            # in any rationale, so this was silencing valid issues like OrderManager.placeOrder.
+            # FIX: only block when the rationale explicitly says the method uses its own fields.
             if 'feature envy' in refactoring_type.lower() or 'feature envy' in rationale:
-                # Check if rationale mentions accessing fields from the SAME class
-                if class_name and (f'{class_name}' in rationale or 'same class' in rationale):
-                    skip_reason = f"Feature envy on own class fields"
-                # Also check if rationale says "uses own fields" or similar
-                if any(keyword in rationale for keyword in ['own field', 'its own', 'same class']):
-                    skip_reason = f"Feature envy on own fields"
+                own_field_phrases = [
+                    'own field', 'its own field', 'same class', 'accesses its own',
+                    "this class's own", 'from its own', 'uses its own'
+                ]
+                if any(phrase in rationale for phrase in own_field_phrases):
+                    skip_reason = "Feature envy on own class fields"
             
             # Filter 5: Skip if rationale talks about "exposes public fields" but method is getter/setter
             if 'exposes public fields' in rationale and self._is_getter_setter(func_name):

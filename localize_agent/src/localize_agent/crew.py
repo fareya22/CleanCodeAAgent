@@ -1,11 +1,6 @@
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
-try:
-    from localize_agent.tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
-except ModuleNotFoundError:
-    from tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
 import os
-import json
 from dotenv import load_dotenv
 
 # Load .env file
@@ -14,40 +9,48 @@ load_dotenv()
 
 def get_llm_with_fallback():
     """
-    Get LLM configured for AWS Bedrock Claude using direct boto3.
+    Build the primary LLM. Gemini is the default (free, reliable JSON output).
+    Bedrock is available as alternative by changing MODEL in .env.
+
+    LiteLLM model string format:
+      gemini/gemini-2.0-flash   → Google Gemini (needs GEMINI_API_KEY / GOOGLE_API_KEY)
+      bedrock/anthropic.claude-3-haiku-20240307-v1:0 → AWS Bedrock (needs AWS creds)
     """
-    import boto3
-    
-    # Configure boto3 session
-    session = boto3.Session(
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-        region_name=os.getenv('AWS_REGION', 'us-east-1')
-    )
-    
-    # Test connection
-    try:
-        bedrock = session.client('bedrock-runtime')
-        print(f"✅ AWS Bedrock connection successful")
-    except Exception as e:
-        print(f"❌ AWS Bedrock connection failed: {e}")
-    
-    model = os.getenv("MODEL", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
-    
+    model = os.getenv("MODEL", "gemini/gemini-2.0-flash")
     print(f"[LLM] Model: {model}")
-    print(f"[LLM] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
-    
-    # Return LLM with explicit credentials and optimized settings
-    return LLM(
+
+    # Common LLM settings regardless of provider
+    common = dict(
         model=model,
-        temperature=0.5,  # Lower temperature for more consistent output
-        max_tokens=4000,  # Reduced to avoid overwhelming responses
-        timeout=120,  # 2 minutes timeout to fail faster
-        max_retries=5,  # More retries with backoff
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-        aws_region_name=os.getenv('AWS_REGION', 'us-east-1')
+        temperature=0.1,   # deterministic JSON output
+        max_tokens=8192,
+        timeout=180,
+        max_retries=3,
     )
+
+    if model.startswith("gemini/") or model.startswith("google/"):
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not gemini_key:
+            raise ValueError(
+                "MODEL is set to a Gemini model but neither GEMINI_API_KEY nor "
+                "GOOGLE_API_KEY is set in .env"
+            )
+        print(f"[LLM] Provider: Gemini (Google AI)")
+        return LLM(**common, api_key=gemini_key)
+
+    elif model.startswith("bedrock/"):
+        print(f"[LLM] Provider: AWS Bedrock  region={os.getenv('AWS_REGION','us-east-1')}")
+        return LLM(
+            **common,
+            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+            aws_region_name=os.getenv("AWS_REGION", "us-east-1"),
+        )
+
+    else:
+        # OpenAI, Anthropic direct, etc. — let LiteLLM pick up the key from env
+        print(f"[LLM] Provider: auto (LiteLLM)")
+        return LLM(**common)
 
 
 @CrewBase
@@ -65,12 +68,8 @@ class LocalizeAgent:
         self._print_llm_config()
     
     def _print_llm_config(self):
-        """Print LLM configuration info"""
-        model = os.getenv("PRIMARY_MODEL", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
-        
-        print(f"[OK] Primary Model: {model}")
-        print(f"[OK] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
-        print(f"[INFO] Using AWS Bedrock (Gemini disabled)")
+        model = os.getenv("MODEL", "gemini/gemini-2.0-flash")
+        print(f"[OK] Active model: {model}")
     
     @agent
     def planning_agent(self) -> Agent:
@@ -114,13 +113,16 @@ class LocalizeAgent:
     
     @agent
     def code_analyzer_agent(self) -> Agent:
+        # Tools have been removed from this agent intentionally.
+        # Metrics (CountMethods, VariableUsage, FanInFanOut, ClassCoupling) are now
+        # pre-computed in Python via _compute_metrics() in batch_analyzer.py and
+        # injected as the {metrics} template variable. This eliminates the ReAct
+        # tool-call loop that caused Haiku to send the full source code 9 times,
+        # which overflowed the context and produced empty LLM responses.
         return Agent(
             config=self.agents_config['code_analyzer_agent'],
             llm=self.llm,
-            tools=[CountMethods(), VariableUsage(), FanInFanOutAnalysis(), ClassCouplingAnalysis()],
             verbose=True,
-            max_iter=2,            # Each tool once is enough; more iterations overflow Bedrock context
-            max_execution_time=60, # Hard cap: 60 s, prevents runaway tool loops
             allow_delegation=False
         )
     
@@ -192,10 +194,27 @@ class LocalizeAgent:
     
     @crew
     def crew(self) -> Crew:
-        """Creates the Code Analysis Crew that orchestrates all agents and tasks."""
+        """Creates the Code Analysis Crew that orchestrates all agents and tasks.
+
+        planning_task is registered via @task (so CrewBase picks it up) but is
+        intentionally excluded from the active task list here.  No downstream task
+        uses it as context, so it was a wasted LLM call.  The active pipeline is:
+          1. design_issue_identification_task
+          2. code_analysis_task
+          3. prompt_engineering_task
+          4. design_issue_localization_task
+          5. ranking_task
+        """
+        active_tasks = [
+            self.design_issue_identification_task(),
+            self.code_analysis_task(),
+            self.prompt_engineering_task(),
+            self.design_issue_localization_task(),
+            self.ranking_task(),
+        ]
         return Crew(
-            agents=self.agents,    # Automatically registered via @agent
-            tasks=self.tasks,      # Automatically registered via @task
+            agents=self.agents,
+            tasks=active_tasks,
             process=Process.sequential,
             verbose=True
         )

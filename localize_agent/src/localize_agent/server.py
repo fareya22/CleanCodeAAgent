@@ -156,12 +156,8 @@ def analyze_repository():
                 }
                 print(f"[API] 🔗 GitHub links enabled: {repo} (branch: {branch})")
         
-        # Use BatchAnalyzer with optimized settings to handle AWS rate limits
-        # max_workers=1: Sequential processing (no parallel to avoid rate limits)
-        # delay_between_files=5: 5 seconds between each file to avoid rate limiting
-        # max_retries=5: Aggressive retry strategy with exponential backoff
-        # retry_backoff=3: 3x exponential backoff (3s, 9s, 27s, 81s, 243s max)
-        batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3, repo_info=repo_info)
+        # Use BatchAnalyzer with defaults from batch_analyzer.py (delay=2s, retries=3, backoff=2)
+        batch_analyzer = BatchAnalyzer(max_workers=1, repo_info=repo_info)
         all_results = batch_analyzer.analyze_repository(files, repo)
         
         # Cache results
