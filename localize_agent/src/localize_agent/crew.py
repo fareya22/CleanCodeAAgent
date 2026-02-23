@@ -71,36 +71,14 @@ class LocalizeAgent:
         model = os.getenv("MODEL", "gemini/gemini-2.0-flash")
         print(f"[OK] Active model: {model}")
     
-    @agent
     def planning_agent(self) -> Agent:
-        def delegate_tasks():
-            # Trigger design_issue_identification_agent
-            print("Debug: Triggering design_issue_identification_agent...")
-            design_issues = self.design_issue_identification_agent.run()
-            print(f"Debug: Design issues identified: {design_issues}")
-
-            # Trigger code_analyzer_agent based on design issues
-            if design_issues:
-                print("Debug: Triggering code_analyzer_agent...")
-                analysis_results = self.code_analyzer_agent.run(input_data=design_issues)
-                print(f"Debug: Code analysis results: {analysis_results}")
-
-                # Trigger prompt_engineering_agent based on analysis results
-                if analysis_results:
-                    print("Debug: Triggering prompt_engineering_agent...")
-                    prompt = self.prompt_engineering_agent.run(input_data=analysis_results)
-                    print(f"Debug: Prompt generated: {prompt}")
-
-            # The rest of the tasks can be executed sequentially
-            print("Debug: Triggering remaining tasks sequentially...")
-            self.design_issue_localization_agent.run()
-            self.ranking_agent.run()
-
+        # planning_agent is intentionally NOT decorated with @agent.
+        # It is excluded from the active pipeline — no task uses its output as context.
+        # Keeping this method only for reference; it is never called by the crew.
         return Agent(
             config=self.agents_config['planning_agent'],
             llm=self.llm,
-            delegate=delegate_tasks,
-            verbose=True
+            verbose=False
         )
     
     @agent
@@ -150,8 +128,10 @@ class LocalizeAgent:
             verbose=False
         )
     
-    @task
     def planning_task(self) -> Task:
+        # planning_task is intentionally NOT decorated with @task.
+        # Removing @task prevents CrewBase from auto-registering it in self.tasks,
+        # so it never runs. No downstream task references it as context.
         return Task(
             config=self.tasks_config['planning_task'],
             output_file='planning_report.md',

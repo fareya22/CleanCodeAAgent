@@ -467,11 +467,13 @@ class BatchAnalyzer:
                 loc_issues = json.loads(m.group(1))
                 print(f"  Localized {len(loc_issues)} issue(s):")
                 for item in loc_issues:
-                    cname = item.get("Class name", "?")
-                    fname = item.get("Function name", "?")
-                    rtype = item.get("refactoring_type", "?")
-                    line  = item.get("line", "?")
-                    print(f"    • {cname}.{fname}  [{rtype}]  line {line}")
+                    cname    = item.get("Class name", "?")
+                    fname    = item.get("Function name", "?")
+                    rtype    = item.get("refactoring_type", "?")
+                    line     = item.get("line", "?")
+                    rat      = item.get("rationale", "")
+                    category = self._infer_issue_category(rat, rtype)
+                    print(f"    • {cname}.{fname}  [Category: {category}]  [{rtype}]  line {line}")
             else:
                 print(f"  (raw): {content[:300].strip()}")
         except Exception as e:
@@ -486,21 +488,55 @@ class BatchAnalyzer:
                 ranked = json.loads(m.group(1))
                 print(f"  Final ranking ({len(ranked)} issue(s)):")
                 for item in sorted(ranked, key=lambda x: x.get("rank", 99)):
-                    rank  = item.get("rank", "?")
-                    cname = item.get("Class name", "?")
-                    fname = item.get("Function name", "?")
-                    rtype = item.get("refactoring_type", "?")
-                    line  = item.get("line", "?")
-                    rat   = item.get("rationale", "")[:80]
-                    print(f"    #{rank}  {cname}.{fname}  [{rtype}]  line {line}")
-                    print(f"         {rat}")
+                    rank     = item.get("rank", "?")
+                    cname    = item.get("Class name", "?")
+                    fname    = item.get("Function name", "?")
+                    rtype    = item.get("refactoring_type", "?")
+                    line     = item.get("line", "?")
+                    rat      = item.get("rationale", "")
+                    category = self._infer_issue_category(rat, rtype)
+                    print(f"    #{rank}  {cname}.{fname}  line {line}")
+                    print(f"         Category  : {category}")
+                    print(f"         Refactoring: {rtype}")
+                    print(f"         Rationale  : {rat[:120]}")
             else:
                 print(f"  (raw): {content[:300].strip()}")
         except Exception as e:
             print(f"  (not available: {e})")
 
         print(f"\n{sep}\n")
-    
+
+    def _infer_issue_category(self, rationale: str, refactoring_type: str) -> str:
+        """
+        Infer the design issue category from the rationale text and refactoring type.
+        Returns one of: god class, feature envy, complexity, modularity, information hiding, unknown.
+        """
+        rat_lower = rationale.lower()
+        ref_lower = refactoring_type.lower()
+
+        if "god class" in rat_lower or "god class" in ref_lower:
+            return "god class"
+        if "feature envy" in rat_lower or "feature envy" in ref_lower:
+            return "feature envy"
+        if any(kw in rat_lower for kw in [
+            "information hiding", "public field", "encapsulation",
+            "public instance field", "bypasses encapsulation",
+            "exposes public", "direct assignment", "dot-notation"
+        ]):
+            return "information hiding"
+        if any(kw in rat_lower for kw in [
+            "complexity", "inline variable", "inline method",
+            "cyclomatic", "nesting", "single-use", "trivial",
+            "long method", "extract method"
+        ]) or ref_lower in ("inline variable", "inline method", "extract method"):
+            return "complexity"
+        if any(kw in rat_lower for kw in [
+            "modularity", "separation of concerns", "cohesion",
+            "tight coupling", "multiple responsibilit"
+        ]):
+            return "modularity"
+        return "unknown"
+
     def _create_basic_issues(self, code_content: str, file_path: str) -> List[Dict[str, Any]]:
         """Create basic issues using heuristics when LLM fails"""
         import re
