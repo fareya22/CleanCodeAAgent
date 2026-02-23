@@ -76,12 +76,25 @@ def analyze_repository():
         print(f"[API] 📄 Number of files: {len(files)}")
         print(f"{'='*60}\n")
         
+        # Parse repo info for GitHub URL generation (optional)
+        branch = data.get('branch', 'main')
+        repo_info = None
+        if repo and '/' in repo:
+            parts = repo.split('/')
+            if len(parts) >= 2:
+                repo_info = {
+                    'owner': parts[0],
+                    'repo': parts[1],
+                    'branch': branch
+                }
+                print(f"[API] 🔗 GitHub links enabled: {repo} (branch: {branch})")
+        
         # Use BatchAnalyzer with optimized settings to handle AWS rate limits
         # max_workers=1: Sequential processing (no parallel to avoid rate limits)
         # delay_between_files=5: 5 seconds between each file to avoid rate limiting
         # max_retries=5: Aggressive retry strategy with exponential backoff
         # retry_backoff=3: 3x exponential backoff (3s, 9s, 27s, 81s, 243s max)
-        batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3)
+        batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3, repo_info=repo_info)
         all_results = batch_analyzer.analyze_repository(files, repo)
         
         # Cache results
@@ -125,7 +138,9 @@ def analyze_file():
     Request JSON:
     {
         "path": "src/Main.java",
-        "content": "...code..."
+        "content": "...code...",
+        "repo": "username/reponame" (optional),
+        "branch": "main" (optional)
     }
     
     Response JSON:
@@ -139,6 +154,8 @@ def analyze_file():
         data = request.json
         file_path = data.get('path', 'unknown.java')
         code_content = data.get('content')
+        repo = data.get('repo')
+        branch = data.get('branch', 'main')
         
         if not code_content:
             return jsonify({
@@ -149,8 +166,20 @@ def analyze_file():
         print(f"\n[API] Analyzing single file: {file_path}")
         print(f"[API] Code length: {len(code_content)} characters")
         
+        # Parse repo info for GitHub URL generation (optional)
+        repo_info = None
+        if repo and '/' in repo:
+            parts = repo.split('/')
+            if len(parts) >= 2:
+                repo_info = {
+                    'owner': parts[0],
+                    'repo': parts[1],
+                    'branch': branch
+                }
+                print(f"[API] 🔗 GitHub links enabled: {repo} (branch: {branch})")
+        
         # Run analysis
-        result = analyze_single_file(code_content, file_path)
+        result = analyze_single_file(code_content, file_path, repo_info)
         
         # result is now a dict with 'issues' and 'summary'
         issues = result.get('issues', [])
@@ -173,10 +202,15 @@ def analyze_file():
             "message": str(e)
         }), 500
 
-def analyze_single_file(code_content, file_path="unknown"):
+def analyze_single_file(code_content, file_path="unknown", repo_info=None):
     """
     Run your CrewAI agents on a single file
     Returns dict with 'issues' list and 'summary' explanation text
+    
+    Args:
+        code_content: Source code to analyze
+        file_path: Path to the file
+        repo_info: Optional dict with 'owner', 'repo', 'branch' for GitHub URLs
     """
     print(f"[CREW] Starting analysis...")
     print(f"[CREW] Code length: {len(code_content)} characters")
@@ -190,7 +224,7 @@ def analyze_single_file(code_content, file_path="unknown"):
         }
     
     # Use BatchAnalyzer for consistency (includes filtering)
-    batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=0)
+    batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=0, repo_info=repo_info)
     
     try:
         # Analyze using batch analyzer (includes filtering)
@@ -207,9 +241,9 @@ def analyze_single_file(code_content, file_path="unknown"):
         print(f"[CREW] ERROR: {str(e)}")
         traceback.print_exc()
         print(f"[CREW] Returning fallback issues due to error...")
-        return create_fallback_issues(code_content, file_path)
+        return create_fallback_issues(code_content, file_path, repo_info)
 
-def create_fallback_issues(code_content, file_path):
+def create_fallback_issues(code_content, file_path, repo_info=None):
     """
     Create basic fallback issues when LLM fails
     This helps debug and shows user something is working
@@ -234,7 +268,7 @@ def create_fallback_issues(code_content, file_path):
             method_line_count += 1
             if '}' in line:
                 if method_line_count > 30:
-                    issues.append({
+                    issue = {
                         "Class name": file_path.split('/')[-1].replace('.java', ''),
                         "Function name": method_name,
                         "Function signature": f"{method_name}(...)",
@@ -243,13 +277,20 @@ def create_fallback_issues(code_content, file_path):
                         "rank": len(issues) + 1,
                         "severity": "high",
                         "line": i - method_line_count
-                    })
+                    }
+                    # Add GitHub URL if repo_info available
+                    if repo_info and repo_info.get('owner') and repo_info.get('repo'):
+                        owner = repo_info['owner']
+                        repo = repo_info['repo']
+                        branch = repo_info.get('branch', 'main')
+                        issue['github_url'] = f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}#L{issue['line']}"
+                    issues.append(issue)
                 in_method = False
     
     # Check for god class (too many methods/fields)
     method_count = code_content.count('public ') + code_content.count('private ')
     if method_count > 15:
-        issues.append({
+        issue = {
             "Class name": file_path.split('/')[-1].replace('.java', ''),
             "Function name": "N/A",
             "Function signature": "class-level",
@@ -258,7 +299,14 @@ def create_fallback_issues(code_content, file_path):
             "rank": len(issues) + 1,
             "severity": "high",
             "line": 1
-        })
+        }
+        # Add GitHub URL if repo_info available
+        if repo_info and repo_info.get('owner') and repo_info.get('repo'):
+            owner = repo_info['owner']
+            repo = repo_info['repo']
+            branch = repo_info.get('branch', 'main')
+            issue['github_url'] = f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}#L{issue['line']}"
+        issues.append(issue)
     
     print(f"[FALLBACK] Created {len(issues)} basic issues using heuristics")
     return {

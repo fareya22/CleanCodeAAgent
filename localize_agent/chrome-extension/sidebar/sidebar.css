@@ -267,11 +267,20 @@ body.cleancode-show .cleancode-sidebar {
   padding: 12px;
   margin-bottom: 12px;
   background: white;
-  transition: box-shadow 0.2s;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
 .issue-card:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Clickable issue cards with GitHub links */
+.issue-card.clickable:hover {
+  box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
+  transform: translateY(-2px);
+  border-left-width: 5px;
+  background: #f6fbff;
 }
 
 .issue-card.severity-high {
@@ -290,6 +299,25 @@ body.cleancode-show .cleancode-sidebar {
   display: flex;
   gap: 8px;
   margin-bottom: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* GitHub link icon */
+.github-link-icon {
+  margin-left: auto;
+  font-size: 16px;
+  text-decoration: none;
+  opacity: 0.6;
+  transition: all 0.2s;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.github-link-icon:hover {
+  opacity: 1;
+  transform: scale(1.15);
+  background: rgba(9, 105, 218, 0.1);
 }
 
 .severity-badge {

@@ -17,7 +17,7 @@ import traceback
 class BatchAnalyzer:
     """Analyze multiple Java files from a repository"""
     
-    def __init__(self, max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3):
+    def __init__(self, max_workers=1, delay_between_files=5, max_retries=5, retry_backoff=3, repo_info=None):
         """
         Initialize batch analyzer
         
@@ -26,6 +26,7 @@ class BatchAnalyzer:
             delay_between_files: Seconds to wait between file analyses (default 5 to avoid rate limits)
             max_retries: Maximum number of retries for failed LLM calls (default 5 for AWS stability)
             retry_backoff: Backoff multiplier for retry delays (default 3 for aggressive backoff)
+            repo_info: Optional dict with 'owner', 'repo', 'branch' for GitHub URL generation (default None)
         """
         self.max_workers = max_workers
         self.delay_between_files = delay_between_files
@@ -33,6 +34,7 @@ class BatchAnalyzer:
         self.retry_backoff = retry_backoff
         self.results = []
         self.analysis_cache = {}
+        self.repo_info = repo_info
     
     def analyze_repository(self, files: List[Dict[str, str]], repo_name: str = "unknown") -> List[Dict[str, Any]]:
         """
@@ -80,6 +82,12 @@ class BatchAnalyzer:
             try:
                 issues = self.analyze_single_file(code_content, file_path)
                 
+                # Add GitHub URLs to issues if repo_info is provided
+                if self.repo_info:
+                    for issue in issues:
+                        if 'line' in issue:
+                            issue['github_url'] = self._generate_github_url(file_path, issue['line'])
+                
                 results.append({
                     "file": file_path,
                     "issues": issues,
@@ -96,6 +104,13 @@ class BatchAnalyzer:
                 print(f"    🔄 Attempting fallback heuristic analysis...")
                 try:
                     fallback_issues = self._create_basic_issues(code_content, file_path)
+                    
+                    # Add GitHub URLs to fallback issues if repo_info is provided
+                    if self.repo_info:
+                        for issue in fallback_issues:
+                            if 'line' in issue:
+                                issue['github_url'] = self._generate_github_url(file_path, issue['line'])
+                    
                     results.append({
                         "file": file_path,
                         "issues": fallback_issues,
@@ -117,13 +132,13 @@ class BatchAnalyzer:
         total_issues = sum(len(r.get('issues', [])) for r in results)
         successful = len([r for r in results if r['status'] == 'success'])
         
-        print(f"\n{'='*70}")
-        print(f"📊 ANALYSIS SUMMARY")
-        print(f"{'='*70}")
-        print(f"✅ Successful: {successful}/{len(java_files)}")
-        print(f"🐛 Total issues found: {total_issues}")
-        print(f"💾 Cache size: {len(self.analysis_cache)} entries")
-        print(f"{'='*70}\n")
+        # print(f"\n{'='*70}")
+        # print(f"📊 ANALYSIS SUMMARY")
+        # print(f"{'='*70}")
+        # print(f"✅ Successful: {successful}/{len(java_files)}")
+        # print(f"🐛 Total issues found: {total_issues}")
+        # print(f"💾 Cache size: {len(self.analysis_cache)} entries")
+        # print(f"{'='*70}\n")
         
         return results
     
@@ -167,10 +182,17 @@ class BatchAnalyzer:
                 # Filter and validate issues
                 filtered_issues = self._filter_and_validate_issues(raw_issues, code_content, file_path)
                 print(f"    [FILTER] After validation: {len(filtered_issues)} issues remain")
-                
+
+                # Add GitHub URLs if repo_info is provided
+                if self.repo_info:
+                    for issue in filtered_issues:
+                        if not issue.get('github_url'):
+                            line_num = issue.get('line') or self._find_function_line(code_content, issue)
+                            issue['github_url'] = self._generate_github_url(file_path, line_num)
+
                 # Cache successful result
                 self.analysis_cache[cache_key] = filtered_issues
-                
+
                 return filtered_issues
                 
             except Exception as e:
@@ -192,6 +214,12 @@ class BatchAnalyzer:
         print(f"    [FALLBACK] All retries exhausted. Using heuristic analysis...")
         try:
             fallback_issues = self._create_basic_issues(code_content, file_path)
+            # Add GitHub URLs to fallback issues
+            if self.repo_info:
+                for issue in fallback_issues:
+                    if not issue.get('github_url'):
+                        line_num = issue.get('line') or self._find_function_line(code_content, issue)
+                        issue['github_url'] = self._generate_github_url(file_path, line_num)
             # Cache fallback result
             self.analysis_cache[cache_key] = fallback_issues
             return fallback_issues
@@ -344,7 +372,118 @@ class BatchAnalyzer:
                 "line": 1
             })
         
-        return issues    
+        return issues
+    
+    def _find_function_line(self, code_content: str, issue: dict) -> int:
+        """
+        Find the EXACT line number of a function or class using AST.
+        Returns the declaration line number from javalang AST.
+        Falls back to text search only if AST fails.
+        """
+        import javalang
+        import re
+        
+        func_name = issue.get('Function name', '')
+        class_name = issue.get('Class name', '')
+        
+        # If no function name (class-level issue), find class declaration
+        if not func_name or func_name in ('N/A', ''):
+            return self._find_class_line(code_content, class_name)
+        
+        try:
+            # Clean code for parsing
+            clean_code = re.sub(r"//.*?$|/\*.*?\*/", "", code_content, flags=re.MULTILINE)
+            
+            # Parse AST
+            tree = javalang.parse.parse(clean_code)
+            
+            # Search for method in AST
+            for type_decl in tree.types:
+                # Check if this is the right class
+                if hasattr(type_decl, 'name') and type_decl.name == class_name:
+                    if hasattr(type_decl, 'methods'):
+                        for method in type_decl.methods:
+                            if method.name == func_name:
+                                # Found the method! Return its position
+                                if hasattr(method, 'position') and method.position:
+                                    return method.position.line
+        except Exception as e:
+            print(f"       ⚠️  AST parse failed for {func_name}: {e}")
+        
+        # Fallback: Text search (but more precise)
+        lines = code_content.split('\n')
+        for i, line in enumerate(lines, 1):
+            # Match method declaration pattern more strictly
+            if func_name in line and '(' in line:
+                # Avoid matching comments or method calls
+                if '//' not in line[:line.index(func_name)] and '/*' not in line[:line.index(func_name)]:
+                    # Check if this looks like a method declaration (has visibility modifier or return type before it)
+                    if any(keyword in line for keyword in ['public', 'private', 'protected', 'void', 'int', 'String', 'boolean']):
+                        return i
+        
+        return 1  # Last resort fallback
+    
+    def _find_class_line(self, code_content: str, class_name: str) -> int:
+        """
+        Find the EXACT line number of a class declaration using AST.
+        """
+        import javalang
+        import re
+        
+        if not class_name:
+            return 1
+        
+        try:
+            # Clean code for parsing
+            clean_code = re.sub(r"//.*?$|/\*.*?\*/", "", code_content, flags=re.MULTILINE)
+            
+            # Parse AST
+            tree = javalang.parse.parse(clean_code)
+            
+            # Search for class in AST
+            for type_decl in tree.types:
+                if hasattr(type_decl, 'name') and type_decl.name == class_name:
+                    if hasattr(type_decl, 'position') and type_decl.position:
+                        return type_decl.position.line
+        except Exception as e:
+            print(f"       ⚠️  AST parse failed for class {class_name}: {e}")
+        
+        # Fallback: Text search for class declaration
+        lines = code_content.split('\n')
+        class_pattern = re.compile(rf'\b(?:public\s+)?(?:class|interface|enum)\s+{re.escape(class_name)}\b')
+        for i, line in enumerate(lines, 1):
+            if class_pattern.search(line):
+                return i
+        
+        return 1
+
+    def _generate_github_url(self, file_path: str, line_number=None) -> str:
+        """
+        Generate a GitHub URL pointing to a file (and optionally a specific line).
+
+        Args:
+            file_path: File path in repository
+            line_number: Line number (optional). When None or 0, the URL points to
+                         the file without a line anchor.
+
+        Returns:
+            GitHub URL string, or empty string when repo_info is unavailable.
+        """
+        if not self.repo_info:
+            return ""
+
+        owner = self.repo_info.get('owner', '')
+        repo = self.repo_info.get('repo', '')
+        branch = self.repo_info.get('branch', 'main')
+
+        if not owner or not repo:
+            return ""
+
+        url = f"https://github.com/{owner}/{repo}/blob/{branch}/{file_path}"
+        if line_number:
+            url += f"#L{line_number}"
+        return url
+    
     def _filter_and_validate_issues(self, issues: List[Dict[str, Any]], code_content: str, file_path: str) -> List[Dict[str, Any]]:
         """
         Filter out false positives and validate issues

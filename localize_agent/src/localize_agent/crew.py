@@ -118,9 +118,10 @@ class LocalizeAgent:
             config=self.agents_config['code_analyzer_agent'],
             llm=self.llm,
             tools=[CountMethods(), VariableUsage(), FanInFanOutAnalysis(), ClassCouplingAnalysis()],
-            verbose=True,  # Enable verbose to see what's happening
-            max_iter=5,  # Limit iterations to prevent infinite loops
-            allow_delegation=False  # Prevent delegation issues
+            verbose=True,
+            max_iter=2,            # Each tool once is enough; more iterations overflow Bedrock context
+            max_execution_time=60, # Hard cap: 60 s, prevents runaway tool loops
+            allow_delegation=False
         )
     
     @agent

@@ -238,6 +238,9 @@ function flattenTree(tree) {
 async function analyzeRepository(repoInfo, tree) {
   console.log('[CleanCodeAgent] Starting repository analysis...');
   console.log('[CleanCodeAgent] Tree structure received:', tree.length, 'top-level items');
+
+  // Store globally so issue cards can build fallback GitHub URLs
+  window.currentRepoInfo = repoInfo;
   
   // Show analyzing status
   $('#tab-issues .placeholder').html(`
@@ -344,7 +347,9 @@ async function analyzeRepository(repoInfo, tree) {
           },
           body: JSON.stringify({
             path: file.path,
-            content: content
+            content: content,
+            repo: `${repoInfo.username}/${repoInfo.reponame}`,
+            branch: repoInfo.branch
           })
         });
         
@@ -486,10 +491,30 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
     
     fileHTML += `<div style="margin-top: 15px;"><strong style="font-size: 13px; color: #57606a;">Identified Issues:</strong></div>`;
     
+    // Track links for click handler attachment
+    const linkHandlers = [];
+    
     issues.forEach(issue => {
       const severityClass = getSeverityClass(issue.rank);
       const severityLabel = getSeverityLabel(issue.rank);
       
+      // Resolve GitHub URL - use issue URL if present, otherwise build from repo info
+      let githubUrl = (issue.github_url && issue.github_url.length > 0) ? issue.github_url : '';
+
+      if (!githubUrl && window.currentRepoInfo) {
+        const ri = window.currentRepoInfo;
+        githubUrl = `https://github.com/${ri.username}/${ri.reponame}/blob/${ri.branch}/${fileResult.file}`;
+      }
+
+      console.log(`[Issue Link] ${issue["Class name"]}.${issue["Function name"]} -> ${githubUrl}`);
+
+      // Create clickable class.method name — navigation target (line) is embedded in githubUrl hash by backend AST
+      const classMethodText = `${issue["Class name"]}.${issue["Function name"]}`;
+      const linkId = `issue-link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const clickableTitle = githubUrl
+        ? `<a href="#" id="${linkId}" data-github-url="${githubUrl.replace(/"/g, '&quot;')}" style="color: #0969da; text-decoration: none; border-bottom: 1px solid #0969da;">${classMethodText}</a>`
+        : classMethodText;
+
       fileHTML += `
         <div class="issue-card ${severityClass}">
           <div class="issue-header">
@@ -497,7 +522,7 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
             <span class="rank-badge">Rank #${issue.rank || 'N/A'}</span>
           </div>
           <div class="issue-title">
-            <strong>${issue["Class name"]}.${issue["Function name"]}</strong>
+            <strong>${clickableTitle}</strong>
           </div>
           <div class="issue-signature">
             <code>${issue["Function signature"]}</code>
@@ -510,7 +535,26 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
           </div>
         </div>
       `;
+      
+      // Store link info for later attachment
+      if (githubUrl) {
+        linkHandlers.push({ linkId, githubUrl });
+      }
     });
+  
+    // Attach click handlers after DOM insertion
+    setTimeout(() => {
+      linkHandlers.forEach(({ linkId, githubUrl }) => {
+        const link = document.getElementById(linkId);
+        if (link) {
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log(`[Click] Navigating to: ${githubUrl}`);
+            navigateToCode(githubUrl);
+          });
+        }
+      });
+    }, 0);
   }
   
   fileHTML += `
@@ -672,6 +716,23 @@ function displayAnalysisResults(results, summary) {
       const severityClass = getSeverityClass(issue.rank);
       const severityLabel = getSeverityLabel(issue.rank);
       
+      // Resolve GitHub URL - use issue URL if present, otherwise build from repo info
+      let githubUrl = (issue.github_url && issue.github_url.length > 0) ? issue.github_url : '';
+
+      if (!githubUrl && window.currentRepoInfo) {
+        const ri = window.currentRepoInfo;
+        githubUrl = `https://github.com/${ri.username}/${ri.reponame}/blob/${ri.branch}/${fileResult.file}`;
+      }
+
+      console.log(`[Issue Link] ${issue["Class name"]}.${issue["Function name"]} -> ${githubUrl}`);
+
+      // Create clickable class.method name — navigation target (line) is embedded in githubUrl hash by backend AST
+      const classMethodText = `${issue["Class name"]}.${issue["Function name"]}`;
+      const linkId = `issue-link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const clickableTitle = githubUrl
+        ? `<a href="#" id="${linkId}" data-github-url="${githubUrl.replace(/"/g, '&quot;')}" style="color: #0969da; text-decoration: none; border-bottom: 1px solid #0969da;">${classMethodText}</a>`
+        : classMethodText;
+      
       $container.append(`
         <div class="issue-card ${severityClass}">
           <div class="issue-header">
@@ -679,7 +740,7 @@ function displayAnalysisResults(results, summary) {
             <span class="rank-badge">Rank #${issue.rank || 'N/A'}</span>
           </div>
           <div class="issue-title">
-            <strong>${issue["Class name"]}.${issue["Function name"]}</strong>
+            <strong>${clickableTitle}</strong>
           </div>
           <div class="issue-signature">
             <code>${issue["Function signature"]}</code>
@@ -692,6 +753,21 @@ function displayAnalysisResults(results, summary) {
           </div>
         </div>
       `);
+      
+      // Attach click handler after DOM insertion
+      if (githubUrl) {
+        setTimeout(() => {
+          const link = document.getElementById(linkId);
+          if (link) {
+            link.addEventListener('click', (e) => {
+              e.preventDefault();
+              const url = link.getAttribute('data-github-url');
+              console.log(`[Click] Navigating to: ${url}`);
+              navigateToCode(url);
+            });
+          }
+        }, 0);
+      }
     });
   });
   
@@ -1008,4 +1084,96 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+// ============================================
+// NAVIGATION HELPERS
+// ============================================
+
+/**
+ * Navigate to a specific location in a GitHub file.
+ * The line number is extracted from the URL hash (#L42) which the
+ * backend sets via AST analysis (_find_function_line / _find_class_line).
+ *
+ * Same file  → scroll directly to the line (no reload).
+ * Other file → navigate; the #L hash in the URL makes GitHub jump there.
+ */
+function navigateToCode(githubUrl) {
+  let targetUrl;
+  try {
+    targetUrl = new URL(githubUrl);
+  } catch (e) {
+    console.error('[Navigation] Invalid URL:', githubUrl);
+    return;
+  }
+
+  const isOnSameFile = window.location.pathname === targetUrl.pathname;
+
+  // Extract line number from URL hash, e.g. #L42 or #L42-L45
+  const hashMatch = targetUrl.hash.match(/L(\d+)/);
+  const lineNumber = hashMatch ? parseInt(hashMatch[1]) : null;
+
+  console.log(`[Navigation] url=${githubUrl} sameFile=${isOnSameFile} line=${lineNumber}`);
+
+  if (isOnSameFile) {
+    if (lineNumber) {
+      const newHash = `#L${lineNumber}`;
+      if (window.location.hash !== newHash) {
+        window.history.pushState(null, '', newHash);
+      }
+      scrollToLineNumber(lineNumber);
+    }
+    // If no line number embedded, nothing to do (already on the file)
+  } else {
+    // Navigate to the file; #L in the URL makes GitHub highlight the line automatically
+    window.location.href = githubUrl;
+  }
+}
+
+/**
+ * Scroll to a specific line number on the current GitHub file page
+ * Uses GitHub's line number anchors (LC{lineNumber})
+ */
+function scrollToLineNumber(lineNumber) {
+  // GitHub uses IDs like LC1, LC2, etc. for line numbers
+  const lineElement = document.getElementById(`LC${lineNumber}`);
+  
+  if (lineElement) {
+    // Scroll to the line with smooth behavior
+    lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    
+    // Highlight the line temporarily
+    const row = lineElement.closest('tr');
+    if (row) {
+      // Remove existing highlights
+      document.querySelectorAll('.highlighted-line').forEach(el => {
+        el.classList.remove('highlighted-line');
+        el.style.backgroundColor = '';
+      });
+      
+      // Add highlight
+      row.classList.add('highlighted-line');
+      row.style.backgroundColor = 'rgba(255, 212, 59, 0.4)';
+      
+      // Remove highlight after 2 seconds
+      setTimeout(() => {
+        row.style.transition = 'background-color 1s';
+        row.style.backgroundColor = '';
+        setTimeout(() => {
+          row.classList.remove('highlighted-line');
+          row.style.transition = '';
+        }, 1000);
+      }, 2000);
+    }
+  } else {
+    console.warn(`[Navigation] Line element LC${lineNumber} not found, trying alternative method`);
+    
+    // Fallback: Try using the L{lineNumber} anchor
+    const anchor = document.querySelector(`a[name="L${lineNumber}"]`);
+    if (anchor) {
+      anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      console.error(`[Navigation] Could not find line ${lineNumber} on page`);
+    }
+  }
 }

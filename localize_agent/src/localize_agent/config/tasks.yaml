@@ -90,7 +90,7 @@ prompt_engineering_task:
 
 design_issue_localization_task:
   description: >
-    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the "prompt" dictionary, follow its instructions, and determine the class and method (or variable, if applicable) that need to be refactored. If there are multiple functions or locations to refactor, generate a separate JSON/dict for each. The output must be formatted as a list of JSON/dict objects, where each object contains exactly the following keys: "Class name", "Function name", "Function signature", "refactoring_type", and "rationale". This output should instruct the developer on where to apply the refactoring. For "extract class" refactoring, identify the class that should be split and the methods/fields that should be moved to a new class.
+    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the "prompt" dictionary, follow its instructions, and determine the class and method (or variable, if applicable) that need to be refactored. If there are multiple functions or locations to refactor, generate a separate JSON/dict for each. The output must be formatted as a list of JSON/dict objects, where each object contains exactly the following keys: "Class name", "Function name", "Function signature", "refactoring_type", "rationale", and "line". This output should instruct the developer on where to apply the refactoring. For "extract class" refactoring, identify the class that should be split and the methods/fields that should be moved to a new class.
   expected_output: >
     A list of JSON/dict objects, each formatted exactly as follows:
     {
@@ -98,7 +98,8 @@ design_issue_localization_task:
       "Function name": "Identified function name",
       "Function signature": "Identified function signature",
       "refactoring_type": "One of move method, extract class, extract method, parameterize variable, inline variable, or inline method",
-      "rationale": "Brief explanation of why this location needs refactoring"
+      "rationale": "Brief explanation of why this location needs refactoring",
+      "line": integer line number in the source code where the function or class definition begins (e.g. 42)
     }
     Do not include any extra information.
   agent: design_issue_localization_agent
@@ -114,6 +115,7 @@ ranking_task:
       "Function signature": "Identified function signature",
       "refactoring_type": "One of move method, extract class, extract method, parameterize variable, inline variable, or inline method",
       "rationale": "Brief explanation of why this location needs refactoring",
+      "line": integer line number in the source code where the function or class definition begins (carry over from localization task),
       "rank": "An integer representing the rank of this item"
     }
     The rank should be assigned based on the importance of the refactoring target.
