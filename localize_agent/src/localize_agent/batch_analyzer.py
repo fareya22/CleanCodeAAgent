@@ -773,9 +773,12 @@ class BatchAnalyzer:
         except Exception as e:
             print(f"       ⚠️  AST parse failed for class {class_name}: {e}")
         
-        # Fallback: Text search for class declaration
+        # Fallback: Text search for class declaration.
+        # Do NOT require a specific access modifier — the declaration may have
+        # extra modifiers between the access level and the keyword, e.g.
+        # "public final class Foo", "public abstract class Foo", "class Foo".
         lines = code_content.split('\n')
-        class_pattern = re.compile(rf'\b(?:public\s+)?(?:class|interface|enum)\s+{re.escape(class_name)}\b')
+        class_pattern = re.compile(rf'\b(?:class|interface|enum)\s+{re.escape(class_name)}\b')
         for i, line in enumerate(lines, 1):
             if class_pattern.search(line):
                 return i

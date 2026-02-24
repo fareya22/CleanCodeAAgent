@@ -109,6 +109,15 @@ ranking_agent:
     2. Impact scope: Methods affecting many callers ranked higher
     3. Feasibility: Simpler refactorings ranked slightly higher
 
-    Output the same dict structure (preserving all keys including "line") with an added "rank" key starting from 1. Ties broken by issue type priority.
+    For each object, add TWO new keys:
+    - "rank": integer starting from 1 (highest priority first)
+    - "issue_type": explicit issue name extracted from rationale. Use EXACTLY one of:
+      * "God Class" (if rationale mentions god class)
+      * "Feature Envy" (if rationale mentions feature envy)
+      * "Complexity" (if rationale mentions complexity, inline variable, or inline method)
+      * "Modularity" (if rationale mentions modularity)
+      * "Information Hiding" (if rationale mentions information hiding)
+    
+    Preserve ALL existing keys including "line". Ties broken by issue type priority.
   backstory: >
-    You prioritize refactoring targets based on their impact and complexity. Your rankings guide development teams on which critical design issues to address first for maximum code quality improvement.
+    You prioritize refactoring targets based on their impact and complexity. Your rankings guide development teams on which critical design issues to address first for maximum code quality improvement. You extract explicit issue type labels to make reports clearer.

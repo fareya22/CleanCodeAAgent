@@ -143,7 +143,7 @@ body.cleancode-show .cleancode-sidebar {
   width: 40px;
   height: 40px;
   border: 4px solid #f6f8fa;
-  border-top: 4px solid #0969da;
+  border-top: 4px solid #24292f;
   border-radius: 50%;
   animation: spin 1s linear infinite;
   margin-bottom: 16px;
@@ -200,17 +200,17 @@ body.cleancode-show .cleancode-sidebar {
 }
 
 .issue-badge.high {
-  background: #ff4444;
+  background: #24292f;
   color: white;
 }
 
 .issue-badge.medium {
-  background: #ff9800;
+  background: #57606a;
   color: white;
 }
 
 .issue-badge.low {
-  background: #4caf50;
+  background: #6e7781;
   color: white;
 }
 
@@ -262,7 +262,7 @@ body.cleancode-show .cleancode-sidebar {
 
 .issue-card {
   border: 1px solid #d0d7de;
-  border-left: 4px solid #0969da;
+  border-left: 4px solid #24292f;
   border-radius: 6px;
   padding: 12px;
   margin-bottom: 12px;
@@ -284,15 +284,15 @@ body.cleancode-show .cleancode-sidebar {
 }
 
 .issue-card.severity-high {
-  border-left-color: #d73a49;
+  border-left-color: #24292f;
 }
 
 .issue-card.severity-medium {
-  border-left-color: #fb8500;
+  border-left-color: #57606a;
 }
 
 .issue-card.severity-low {
-  border-left-color: #1a7f37;
+  border-left-color: #6e7781;
 }
 
 .issue-header {
@@ -326,21 +326,23 @@ body.cleancode-show .cleancode-sidebar {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
+  background: #24292f;
+  color: white;
 }
 
 .severity-badge.severity-high {
-  background: #ffebe9;
-  color: #d73a49;
+  background: #24292f;
+  color: white;
 }
 
 .severity-badge.severity-medium {
-  background: #fff4e6;
-  color: #fb8500;
+  background: #57606a;
+  color: white;
 }
 
 .severity-badge.severity-low {
-  background: #dafbe1;
-  color: #1a7f37;
+  background: #6e7781;
+  color: white;
 }
 
 .rank-badge {
@@ -350,6 +352,23 @@ body.cleancode-show .cleancode-sidebar {
   background: #f6f8fa;
   color: #57606a;
   font-weight: 500;
+}
+
+.issue-type-display {
+  margin: 8px 0 10px 0;
+}
+
+.issue-type-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f6f8fa;
+  color: #24292f;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid #d0d7de;
 }
 
 .issue-title {
@@ -368,7 +387,7 @@ body.cleancode-show .cleancode-sidebar {
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
-  color: #0969da;
+  color: #24292f;
   font-family: 'Monaco', 'Menlo', monospace;
 }
 
@@ -378,7 +397,7 @@ body.cleancode-show .cleancode-sidebar {
 
 .refactoring-badge {
   display: inline-block;
-  background: #0969da;
+  background: #24292f;
   color: white;
   padding: 4px 10px;
   border-radius: 16px;
@@ -745,11 +764,13 @@ body.cleancode-show .cleancode-toggle {
 
 /* Badge variants */
 .badge.success {
-  background: #2da44e;
+  background: #24292f;
+  color: white;
 }
 
 .badge.issue-badge {
-  background: #d1242f;
+  background: #24292f;
+  color: white;
   margin-left: 8px;
 }
 
@@ -820,12 +841,56 @@ body.cleancode-show .cleancode-toggle {
 }
 
 .status-badge.clean {
-  background: #dafbe1;
-  color: #1a7f37;
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
 }
 
 .no-issues {
   text-align: center;
+}
+
+/* Disable GitHub's native line highlighting completely - AGGRESSIVE */
+.highlighted,
+div.highlighted,
+tr.highlighted,
+tr.highlighted td,
+div.highlighted > span,
+[data-highlighted="true"],
+.js-file-line.highlighted,
+.blob-code.highlighted,
+.blob-code-inner.highlighted {
+  background-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Also disable any line that GitHub might highlight on load */
+tr.highlighted::before,
+div.highlighted::before {
+  display: none !important;
+}
+
+/* Code Highlighting for Navigation - TR based (old layout) */
+tr.cleancode-highlight,
+tr.cleancode-highlight td {
+  background-color: rgba(255, 212, 59, 0.4) !important;
+  transition: background-color 0.3s ease !important;
+}
+
+/* Code Highlighting for Navigation - DIV based (new layout) */
+div.cleancode-highlight {
+  background-color: rgba(255, 212, 59, 0.4) !important;
+  transition: background-color 0.3s ease !important;
+  display: block !important;
+  width: 100% !important;
+}
+
+/* Override GitHub's default highlight when our class is present */
+tr.cleancode-highlight.highlighted,
+tr.cleancode-highlight.highlighted td,
+div.cleancode-highlight.highlighted {
+  background-color: rgba(255, 212, 59, 0.4) !important;
 }
 
 

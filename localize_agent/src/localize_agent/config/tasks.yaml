@@ -32,8 +32,12 @@ planning_task:
 design_issue_identification_task:
   description: >
     Conduct an initial review of the following code to identify design issues.
+    
+    CRITICAL: You MUST perform an EXHAUSTIVE analysis. Check for ALL issue types systematically.
+    Do NOT stop after finding one issue - continue checking for all other types.
+    Your analysis must be CONSISTENT - the same code should always produce the same results.
 
-    ISSUE TYPES AND DETECTION RULES:
+    ISSUE TYPES AND DETECTION RULES (check ALL of these):
     - "god class": Count ONLY business logic methods (exclude getters/setters like get*, set*, is*). Only flag if business method count > 5. Do NOT flag model/DTO classes.
     - "feature envy": A method that uses 4+ fields from ANOTHER class's data directly.
     - "complexity": ANY of the following:
@@ -42,6 +46,15 @@ design_issue_identification_task:
         * A method whose entire body is a single trivial expression and is called only once → "inline method" refactoring
     - "modularity": Poor separation of concerns, multiple responsibilities in one class.
     - "information hiding": (a) class has actual public instance fields (not methods). (b) a method in this class directly sets or reads public fields of ANOTHER object via dot-notation (obj.field = ... or reading obj.field), bypassing encapsulation.
+
+    SYSTEMATIC ANALYSIS CHECKLIST:
+    1. Count business logic methods (exclude get*/set*/is*) → check if > 5 for "god class"
+    2. Scan each method for external field accesses → check if any method accesses 4+ fields from another class for "feature envy"
+    3. Check for public instance fields → flag "information hiding"
+    4. Check for direct field access on external objects (obj.field) → flag "information hiding"
+    5. Scan for single-use variables → flag "complexity"
+    6. Check method complexity and nesting → flag "complexity"
+    7. Check for multiple responsibilities → flag "modularity"
 
     Code to analyze:
     {code}
@@ -116,7 +129,11 @@ design_issue_localization_task:
   description: >
     Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the code and determine the class and method (or variable, if applicable) that need to be refactored for EACH identified design issue. If there are multiple functions, variables, or classes to refactor, generate a separate JSON object for each one.
 
-    IMPORTANT: You must report issues for ALL design issue types identified (e.g., if both "information hiding" and "feature envy" and "inline variable" were identified, produce JSON objects for each of them — do NOT focus only on one type).
+    CRITICAL REQUIREMENTS:
+    1. EXHAUSTIVE REPORTING: You MUST report issues for ALL design issue types that were identified in the previous stages
+    2. If "information hiding", "feature envy", AND "inline variable" were all identified, you MUST produce JSON objects for EACH type
+    3. Do NOT cherry-pick or focus on only the most obvious issues - report EVERY instance
+    4. Be CONSISTENT - the same code should always produce the same localization results
 
     The output must be a JSON array where each object contains EXACTLY these six keys:
     - "Class name": The class containing the issue
@@ -126,11 +143,12 @@ design_issue_localization_task:
     - "rationale": MUST explicitly state: (1) which design issue this targets, (2) specific code evidence (e.g., "Variable 'laptopIndex' assigned on line 32 and used only once on line 33")
     - "line": Integer line number where the function/variable/class is defined
 
-    For "inline variable": each single-use variable gets its own JSON object.
-    For "extract class": identify which methods/fields to move to the new class.
-    For "information hiding": flag both (a) classes with public instance fields AND (b) methods that access public fields of other objects via dot-notation.
-    For "feature envy": flag methods that access 4+ fields from another class.
-    For "god class": flag classes with more than 5 business logic methods (excluding getters/setters).
+    SPECIFIC RULES FOR EACH ISSUE TYPE:
+    - For "inline variable": each single-use variable gets its own JSON object
+    - For "extract class": identify which methods/fields to move to the new class
+    - For "information hiding": flag both (a) classes with public instance fields AND (b) methods that access public fields of other objects via dot-notation
+    - For "feature envy": flag methods that access 4+ fields from another class
+    - For "god class": flag classes with more than 5 business logic methods (excluding getters/setters)
 
   expected_output: >
     A JSON array, output ONLY the array with no extra text:
@@ -153,7 +171,21 @@ ranking_task:
     Rank the outputs from the design_issue_localization_agent based on their importance.
     Priority order: god class (1st) > feature envy (2nd) > complexity (3rd) > modularity (4th) > information hiding (5th).
     Within same category, rank by impact scope (methods affecting many callers ranked higher).
-    Add a "rank" key (integer starting from 1) to each object. Preserve ALL other keys including "line".
+    
+    For EACH object:
+    1. Add a "rank" key (integer starting from 1)
+    2. Add an "issue_type" key - use BOTH rationale AND refactoring_type field to determine:
+       - If rationale mentions "god class" OR "God class" → "God Class"
+       - If refactoring_type is "extract class" AND rationale does NOT mention "feature envy" → "God Class"
+       - If rationale mentions "feature envy" OR "Feature Envy" → "Feature Envy"
+       - If refactoring_type is "move method" → "Feature Envy"
+       - If refactoring_type is "inline variable" OR "inline method" OR "parameterize variable" OR "extract method" → "Complexity"
+       - If rationale mentions "complexity" OR "cyclomatic" OR "nesting" OR "hard-coded" OR "magic number" → "Complexity"
+       - If rationale mentions "modularity" OR "separation of concerns" → "Modularity"
+       - If rationale mentions "information hiding" OR "public field" OR "encapsulation" → "Information Hiding"
+    3. The issue_type MUST be one of these 5 values ONLY: "God Class", "Feature Envy", "Complexity", "Modularity", "Information Hiding"
+    4. Preserve ALL other keys including "line"
+    5. IMPORTANT: Process the rules in order from top to bottom. First match wins.
 
   expected_output: >
     A JSON array (output ONLY the array, no extra text):
@@ -165,7 +197,8 @@ ranking_task:
         "refactoring_type": "One of: move method, extract class, extract method, parameterize variable, inline variable, inline method",
         "rationale": "Brief explanation referencing specific design issue and code evidence",
         "line": 42,
-        "rank": 1
+        "rank": 1,
+        "issue_type": "God Class"
       }
     ]
   agent: ranking_agent

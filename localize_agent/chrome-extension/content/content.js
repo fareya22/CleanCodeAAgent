@@ -104,7 +104,7 @@ function createSidebar() {
           </div>
         </div>
         <button class="download-pdf-btn" id="download-pdf-btn" title="Download Analysis Report as PDF">
-          📄 Download PDF Report
+          📄 Download  Report
         </button>
         <span class="powered-by">Powered by CleanCodeAgent</span>
       </div>
@@ -264,13 +264,67 @@ function flattenTree(tree) {
   return result;
 }
 
+function restoreResultsUI(data, repoInfo) {
+  const $issuesList = $('#cleancode-issues-list');
+
+  // Set global state
+  window.currentRepoInfo = repoInfo;
+  window.analysisResults = data;
+
+  // Clear placeholder and prepare list
+  $('#tab-issues .placeholder').empty();
+  $issuesList.empty();
+
+  // Re-render each file's result using the existing renderer (click handlers reattached)
+  data.results.forEach((result, index) => {
+    addFileResultToUI({
+      file: result.file,
+      issues: result.issues || [],
+      summary: result.summary || ''
+    }, data.results.length, index + 1);
+  });
+
+  // Restore summary header and tab badge
+  displayFinalSummary(
+    data.results,
+    data.summary.successfulFiles,
+    data.summary.totalIssues,
+    data.summary.totalFiles
+  );
+
+  // After restoring UI, check if there's a line number in URL hash and scroll to it
+  const hashMatch = window.location.hash.match(/L(\d+)/);
+  if (hashMatch) {
+    const lineNumber = parseInt(hashMatch[1]);
+    console.log(`[Restore] Found line ${lineNumber} in URL hash, scrolling...`);
+    // Wait longer for GitHub's code rendering and DOM stabilization
+    setTimeout(() => {
+      scrollToLineNumber(lineNumber);
+    }, 800);
+  }
+}
+
 async function analyzeRepository(repoInfo, tree) {
   console.log('[CleanCodeAgent] Starting repository analysis...');
   console.log('[CleanCodeAgent] Tree structure received:', tree.length, 'top-level items');
 
   // Store globally so issue cards can build fallback GitHub URLs
   window.currentRepoInfo = repoInfo;
-  
+
+  // If we arrived here via an issue-click navigation, restore previous results instead of re-analyzing
+  const savedRestore = sessionStorage.getItem('cleancode_restore');
+  if (savedRestore) {
+    sessionStorage.removeItem('cleancode_restore'); // consume once
+    try {
+      const data = JSON.parse(savedRestore);
+      console.log('[CleanCodeAgent] Restoring results after navigation — skipping analysis');
+      restoreResultsUI(data, repoInfo);
+      return;
+    } catch (e) {
+      console.warn('[CleanCodeAgent] Restore failed, running fresh analysis:', e);
+    }
+  }
+
   // Show analyzing status
   $('#tab-issues .placeholder').html(`
     <div class="analyzing-status">
@@ -446,7 +500,7 @@ async function analyzeRepository(repoInfo, tree) {
       },
       timestamp: new Date().toISOString()
     };
-    
+
   } catch (error) {
     console.error('[CleanCodeAgent] ❌ Analysis error:', error);
     $('#tab-issues .placeholder').html(`
@@ -537,11 +591,14 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
 
       console.log(`[Issue Link] ${issue["Class name"]}.${issue["Function name"]} -> ${githubUrl}`);
 
+      // Extract issue type (with fallback parsing from rationale if not present)
+      const issueType = issue.issue_type || extractIssueTypeFromRationale(issue.rationale, issue.refactoring_type);
+
       // Create clickable class.method name — navigation target (line) is embedded in githubUrl hash by backend AST
       const classMethodText = `${issue["Class name"]}.${issue["Function name"]}`;
       const linkId = `issue-link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const clickableTitle = githubUrl
-        ? `<a href="#" id="${linkId}" data-github-url="${githubUrl.replace(/"/g, '&quot;')}" style="color: #0969da; text-decoration: none; border-bottom: 1px solid #0969da;">${classMethodText}</a>`
+        ? `<a href="#" id="${linkId}" data-github-url="${githubUrl.replace(/"/g, '&quot;')}" data-line="${issue.line || ''}" style="color: #0969da; text-decoration: none; border-bottom: 1px solid #0969da;">${classMethodText}</a>`
         : classMethodText;
 
       fileHTML += `
@@ -549,6 +606,9 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
           <div class="issue-header">
             <span class="severity-badge ${severityClass}">${severityLabel}</span>
             <span class="rank-badge">Rank #${issue.rank || 'N/A'}</span>
+          </div>
+          <div class="issue-type-display">
+            <span class="issue-type-badge">${issueType}</span>
           </div>
           <div class="issue-title">
             <strong>${clickableTitle}</strong>
@@ -625,10 +685,6 @@ function displayFinalSummary(allResults, successfulFiles, totalIssues, totalFile
           <span class="stat-value">${totalIssues}</span>
           <span class="stat-label">Issues Found</span>
         </div>
-        <div class="stat">
-          <span class="stat-value">${successfulFiles}</span>
-          <span class="stat-label">Successful</span>
-        </div>
       </div>
     </div>
   `;
@@ -693,10 +749,6 @@ function displayAnalysisResults(results, summary) {
           <span class="stat-value">${totalIssues}</span>
           <span class="stat-label">Issues Found</span>
         </div>
-        <div class="stat">
-          <span class="stat-value">${successfulFiles}</span>
-          <span class="stat-label">Successful</span>
-        </div>
       </div>
     </div>
   `);
@@ -755,11 +807,14 @@ function displayAnalysisResults(results, summary) {
 
       console.log(`[Issue Link] ${issue["Class name"]}.${issue["Function name"]} -> ${githubUrl}`);
 
+      // Extract issue type (with fallback parsing from rationale if not present)
+      const issueType = issue.issue_type || extractIssueTypeFromRationale(issue.rationale, issue.refactoring_type);
+
       // Create clickable class.method name — navigation target (line) is embedded in githubUrl hash by backend AST
       const classMethodText = `${issue["Class name"]}.${issue["Function name"]}`;
       const linkId = `issue-link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const clickableTitle = githubUrl
-        ? `<a href="#" id="${linkId}" data-github-url="${githubUrl.replace(/"/g, '&quot;')}" style="color: #0969da; text-decoration: none; border-bottom: 1px solid #0969da;">${classMethodText}</a>`
+        ? `<a href="#" id="${linkId}" data-github-url="${githubUrl.replace(/"/g, '&quot;')}" data-line="${issue.line || ''}" style="color: #0969da; text-decoration: none; border-bottom: 1px solid #0969da;">${classMethodText}</a>`
         : classMethodText;
       
       $container.append(`
@@ -767,6 +822,9 @@ function displayAnalysisResults(results, summary) {
           <div class="issue-header">
             <span class="severity-badge ${severityClass}">${severityLabel}</span>
             <span class="rank-badge">Rank #${issue.rank || 'N/A'}</span>
+          </div>
+          <div class="issue-type-display">
+            <span class="issue-type-badge">${issueType}</span>
           </div>
           <div class="issue-title">
             <strong>${clickableTitle}</strong>
@@ -838,6 +896,59 @@ function showFileDetails(fileData) {
 }
 
 // ============================================
+// ISSUE TYPE EXTRACTION HELPER
+// ============================================
+
+/**
+ * Extract issue type from rationale text and refactoring_type (fallback if issue_type field missing)
+ * This mirrors the logic in tasks.yaml ranking_task
+ */
+function extractIssueTypeFromRationale(rationale, refactoringType) {
+  if (!rationale) return 'Unknown';
+  
+  const rationaleLC = rationale.toLowerCase();
+  const refactoringLC = (refactoringType || '').toLowerCase();
+  
+  // Priority order (first match wins) - mirrors tasks.yaml ranking_task
+  
+  // 1. God Class
+  if (rationaleLC.includes('god class')) return 'God Class';
+  if (refactoringLC === 'extract class' && !rationaleLC.includes('feature envy')) return 'God Class';
+  
+  // 2. Feature Envy
+  if (rationaleLC.includes('feature envy')) return 'Feature Envy';
+  if (refactoringLC === 'move method') return 'Feature Envy';
+  
+  // 3. Complexity (includes inline variable, inline method, parameterize variable, extract method)
+  if (refactoringLC === 'inline variable' || 
+      refactoringLC === 'inline method' || 
+      refactoringLC === 'parameterize variable' ||
+      refactoringLC === 'extract method') return 'Complexity';
+  if (rationaleLC.includes('complexity') || 
+      rationaleLC.includes('cyclomatic') || 
+      rationaleLC.includes('nesting') ||
+      rationaleLC.includes('hard-coded') ||
+      rationaleLC.includes('hardcoded') ||
+      rationaleLC.includes('magic number') ||
+      rationaleLC.includes('inline') || 
+      rationaleLC.includes('trivial') || 
+      rationaleLC.includes('single-use')) return 'Complexity';
+  
+  // 4. Modularity
+  if (rationaleLC.includes('modularity') || 
+      rationaleLC.includes('separation of concerns')) return 'Modularity';
+  
+  // 5. Information Hiding
+  if (rationaleLC.includes('information hiding') || 
+      rationaleLC.includes('public field') || 
+      rationaleLC.includes('encapsulation')) return 'Information Hiding';
+  
+  // Default to Unknown if no match
+  console.warn('[Issue Type] Could not determine issue type:', { rationale, refactoringType });
+  return 'Unknown';
+}
+
+// ============================================
 // USER FEEDBACK
 // ============================================
 
@@ -903,13 +1014,13 @@ function downloadAnalysisReport() {
       background: #ffffff;
     }
     .header {
-      border-bottom: 3px solid #0969da;
+      border-bottom: 3px solid #24292f;
       padding-bottom: 20px;
       margin-bottom: 30px;
     }
     h1 {
       font-size: 32px;
-      color: #0969da;
+      color: #24292f;
       margin-bottom: 10px;
     }
     .meta {
@@ -933,7 +1044,7 @@ function downloadAnalysisReport() {
     .stat-value {
       font-size: 36px;
       font-weight: bold;
-      color: #0969da;
+      color: #24292f;
       display: block;
     }
     .stat-label {
@@ -954,13 +1065,14 @@ function downloadAnalysisReport() {
       font-size: 16px;
     }
     .file-status {
-      background: #dafbe1;
-      color: #1a7f37;
+      background: #f6f8fa;
+      color: #24292f;
       padding: 12px 20px;
       border-radius: 6px;
       margin-bottom: 10px;
       text-align: center;
       font-weight: 600;
+      border: 1px solid #d0d7de;
     }
     .issue {
       border: 1px solid #d0d7de;
@@ -980,18 +1092,20 @@ function downloadAnalysisReport() {
       border-radius: 12px;
       font-size: 12px;
       font-weight: 600;
+      background: #24292f;
+      color: white;
     }
     .severity-high {
-      background: #ffebe9;
-      color: #cf222e;
+      background: #24292f;
+      color: white;
     }
     .severity-medium {
-      background: #fff8c5;
-      color: #9a6700;
+      background: #57606a;
+      color: white;
     }
     .severity-low {
-      background: #ddf4ff;
-      color: #0969da;
+      background: #6e7781;
+      color: white;
     }
     .rank {
       background: #f6f8fa;
@@ -1017,7 +1131,7 @@ function downloadAnalysisReport() {
       color: #1f2328;
     }
     .refactoring {
-      background: #0969da;
+      background: #24292f;
       color: white;
       padding: 4px 12px;
       border-radius: 12px;
@@ -1063,10 +1177,6 @@ function downloadAnalysisReport() {
     <div class="stat">
       <span class="stat-value">${data.summary.totalIssues}</span>
       <span class="stat-label">Issues Found</span>
-    </div>
-    <div class="stat">
-      <span class="stat-value">${data.summary.successfulFiles}</span>
-      <span class="stat-label">Successful</span>
     </div>
   </div>
   
@@ -1115,12 +1225,16 @@ function generateFileReports(results) {
       issues.forEach(issue => {
         const severityClass = getSeverityClass(issue.rank);
         const severityLabel = getSeverityLabel(issue.rank);
+        const issueType = issue.issue_type || extractIssueTypeFromRationale(issue.rationale, issue.refactoring_type);
         
         html += `
           <div class="issue">
             <div class="issue-header">
               <span class="severity ${severityClass}">${severityLabel}</span>
               <span class="rank">Rank #${issue.rank || 'N/A'}</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <span style="background: #f6f8fa; color: #24292f; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; border: 1px solid #d0d7de;">${issueType}</span>
             </div>
             <div class="issue-title">
               ${issue["Class name"]}.${issue["Function name"]}
@@ -1157,11 +1271,8 @@ function escapeHtml(text) {
 
 /**
  * Navigate to a specific location in a GitHub file.
- * The line number is extracted from the URL hash (#L42) which the
- * backend sets via AST analysis (_find_function_line / _find_class_line).
- *
- * Same file  → scroll directly to the line (no reload).
- * Other file → navigate; the #L hash in the URL makes GitHub jump there.
+ * Same file  → scroll + highlight new line (no reload).
+ * Other file → save results to sessionStorage, then navigate.
  */
 function navigateToCode(githubUrl) {
   let targetUrl;
@@ -1182,63 +1293,131 @@ function navigateToCode(githubUrl) {
 
   if (isOnSameFile) {
     if (lineNumber) {
-      const newHash = `#L${lineNumber}`;
-      if (window.location.hash !== newHash) {
-        window.history.pushState(null, '', newHash);
-      }
-      scrollToLineNumber(lineNumber);
+      console.log(`[Navigation] Same file - updating hash to #L${lineNumber}`);
+      // Clear old highlights BEFORE changing hash
+      clearCurrentHighlight();
+      // Update URL hash
+      window.history.replaceState(null, '', `#L${lineNumber}`);
+      // GitHub will re-apply .highlighted class, so clear it again and apply ours
+      setTimeout(() => {
+        clearCurrentHighlight(); // Clear GitHub's auto-highlight from the new hash
+        scrollToLineNumber(lineNumber);
+      }, 300);
     }
-    // If no line number embedded, nothing to do (already on the file)
   } else {
-    // Navigate to the file; #L in the URL makes GitHub highlight the line automatically
+    // Save analysis results so the new page can restore them without re-analysing
+    if (window.analysisResults) {
+      try {
+        sessionStorage.setItem('cleancode_restore', JSON.stringify(window.analysisResults));
+      } catch (e) {
+        console.warn('[Navigation] Could not save results before navigation:', e);
+      }
+    }
     window.location.href = githubUrl;
   }
 }
 
+// Track the currently highlighted line number (not DOM reference, as GitHub may re-render)
+let currentHighlightedLine = null;
+
+/**
+ * Clear the currently highlighted line by searching for it dynamically
+ */
+function clearCurrentHighlight() {
+  console.log(`[Highlight] Clearing highlights (tracked: ${currentHighlightedLine || 'none'})`);
+  
+  // 1. Remove our custom highlight class
+  const cleanCodeHighlights = document.querySelectorAll('.cleancode-highlight');
+  cleanCodeHighlights.forEach(el => {
+    el.classList.remove('cleancode-highlight');
+    el.style.removeProperty('background-color');
+    el.style.removeProperty('display');
+    el.style.removeProperty('width');
+    
+    // If it's a TR, also clear TD backgrounds
+    if (el.tagName === 'TR') {
+      el.querySelectorAll('td').forEach(td => {
+        td.style.removeProperty('background-color');
+      });
+    }
+  });
+  
+  // 2. Remove GitHub's native .highlighted class (from URL hash navigation)
+  const githubHighlights = document.querySelectorAll('.highlighted');
+  githubHighlights.forEach(el => {
+    el.classList.remove('highlighted');
+  });
+  
+  const totalCleared = cleanCodeHighlights.length + githubHighlights.length;
+  if (totalCleared > 0) {
+    console.log(`[Highlight] Cleared ${totalCleared} highlighted elements (${cleanCodeHighlights.length} ours, ${githubHighlights.length} GitHub's)`);
+  }
+  
+  currentHighlightedLine = null;
+}
+
 /**
  * Scroll to a specific line number on the current GitHub file page
- * Uses GitHub's line number anchors (LC{lineNumber})
+ * and apply a yellow highlight. Call clearCurrentHighlight() before this.
  */
 function scrollToLineNumber(lineNumber) {
-  // GitHub uses IDs like LC1, LC2, etc. for line numbers
+  console.log(`[Highlight] Scrolling to line ${lineNumber}`);
+
+  // GitHub's new structure uses <div id="LC{n}"> instead of table rows
   const lineElement = document.getElementById(`LC${lineNumber}`);
-  
-  if (lineElement) {
-    // Scroll to the line with smooth behavior
-    lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    
-    // Highlight the line temporarily
-    const row = lineElement.closest('tr');
-    if (row) {
-      // Remove existing highlights
-      document.querySelectorAll('.highlighted-line').forEach(el => {
-        el.classList.remove('highlighted-line');
-        el.style.backgroundColor = '';
-      });
-      
-      // Add highlight
-      row.classList.add('highlighted-line');
-      row.style.backgroundColor = 'rgba(255, 212, 59, 0.4)';
-      
-      // Remove highlight after 2 seconds
-      setTimeout(() => {
-        row.style.transition = 'background-color 1s';
-        row.style.backgroundColor = '';
-        setTimeout(() => {
-          row.classList.remove('highlighted-line');
-          row.style.transition = '';
-        }, 1000);
-      }, 2000);
-    }
-  } else {
-    console.warn(`[Navigation] Line element LC${lineNumber} not found, trying alternative method`);
-    
-    // Fallback: Try using the L{lineNumber} anchor
+
+  if (!lineElement) {
+    console.error(`[Highlight] Could not find element LC${lineNumber}`);
+    // Try fallback with anchor
     const anchor = document.querySelector(`a[name="L${lineNumber}"]`);
     if (anchor) {
       anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } else {
-      console.error(`[Navigation] Could not find line ${lineNumber} on page`);
+      console.warn(`[Highlight] Used anchor fallback for line ${lineNumber}`);
     }
+    return;
   }
+
+  console.log(`[Highlight] Found LC${lineNumber}, tag: ${lineElement.tagName}`);
+
+  // Scroll to line
+  lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  console.log(`[Highlight] Scrolled to line ${lineNumber}`);
+
+  // For GitHub's new DIV structure, highlight just the LC element itself
+  // (parent DIVs are too large and cover multiple lines)
+  let highlightTarget = null;
+
+  // Strategy 1: If it's a TR (old table layout), use the TR
+  const trParent = lineElement.closest('tr');
+  if (trParent) {
+    highlightTarget = trParent;
+    console.log(`[Highlight] Using TR parent for highlighting`);
+    
+    // Apply highlight
+    highlightTarget.classList.add('cleancode-highlight');
+    highlightTarget.style.setProperty('background-color', 'rgba(255, 212, 59, 0.4)', 'important');
+    highlightTarget.querySelectorAll('td').forEach(td => {
+      td.style.setProperty('background-color', 'rgba(255, 212, 59, 0.4)', 'important');
+    });
+  } 
+  // Strategy 2: DIV structure - highlight just the LC element itself
+  else {
+    highlightTarget = lineElement;
+    console.log(`[Highlight] Highlighting LC element directly (DIV structure)`);
+    
+    // Apply highlight with strong specificity
+    highlightTarget.classList.add('cleancode-highlight');
+    highlightTarget.style.setProperty('background-color', 'rgba(255, 212, 59, 0.4)', 'important');
+    highlightTarget.style.setProperty('display', 'block', 'important');
+    highlightTarget.style.setProperty('width', '100%', 'important');
+  }
+
+  if (!highlightTarget) {
+    console.error(`[Highlight] Could not determine highlight target`);
+    return;
+  }
+  
+  // Store line number for cleanup
+  currentHighlightedLine = lineNumber;
+  console.log(`[Highlight] Successfully highlighted line ${lineNumber}`);
 }

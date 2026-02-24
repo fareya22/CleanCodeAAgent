@@ -1,6 +1,11 @@
 from crewai import Agent, Crew, Process, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
+try:
+    from localize_agent.tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
+except ModuleNotFoundError:
+    from tools.custom_tools import CountMethods, VariableUsage, FanInFanOutAnalysis, ClassCouplingAnalysis
 import os
+import json
 from dotenv import load_dotenv
 
 # Load .env file
@@ -9,48 +14,41 @@ load_dotenv()
 
 def get_llm_with_fallback():
     """
-    Build the primary LLM. Gemini is the default (free, reliable JSON output).
-    Bedrock is available as alternative by changing MODEL in .env.
-
-    LiteLLM model string format:
-      gemini/gemini-2.0-flash   → Google Gemini (needs GEMINI_API_KEY / GOOGLE_API_KEY)
-      bedrock/anthropic.claude-3-haiku-20240307-v1:0 → AWS Bedrock (needs AWS creds)
+    Get LLM configured for AWS Bedrock Claude using direct boto3.
     """
-    model = os.getenv("MODEL", "gemini/gemini-2.0-flash")
-    print(f"[LLM] Model: {model}")
-
-    # Common LLM settings regardless of provider
-    common = dict(
-        model=model,
-        temperature=0.1,   # deterministic JSON output
-        max_tokens=8192,
-        timeout=180,
-        max_retries=3,
+    import boto3
+    
+    # Configure boto3 session
+    session = boto3.Session(
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        region_name=os.getenv('AWS_REGION', 'us-east-1')
     )
-
-    if model.startswith("gemini/") or model.startswith("google/"):
-        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        if not gemini_key:
-            raise ValueError(
-                "MODEL is set to a Gemini model but neither GEMINI_API_KEY nor "
-                "GOOGLE_API_KEY is set in .env"
-            )
-        print(f"[LLM] Provider: Gemini (Google AI)")
-        return LLM(**common, api_key=gemini_key)
-
-    elif model.startswith("bedrock/"):
-        print(f"[LLM] Provider: AWS Bedrock  region={os.getenv('AWS_REGION','us-east-1')}")
-        return LLM(
-            **common,
-            aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-            aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
-            aws_region_name=os.getenv("AWS_REGION", "us-east-1"),
-        )
-
-    else:
-        # OpenAI, Anthropic direct, etc. — let LiteLLM pick up the key from env
-        print(f"[LLM] Provider: auto (LiteLLM)")
-        return LLM(**common)
+    
+    # Test connection
+    try:
+        bedrock = session.client('bedrock-runtime')
+        print(f"✅ AWS Bedrock connection successful")
+    except Exception as e:
+        print(f"❌ AWS Bedrock connection failed: {e}")
+    
+    model = os.getenv("MODEL", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
+    
+    print(f"[LLM] Model: {model}")
+    print(f"[LLM] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
+    
+    # Return LLM with explicit credentials and optimized settings
+    return LLM(
+        model=model,
+        temperature=0.1,  # Very low temperature for maximum consistency across runs
+        max_tokens=4000,  # Reduced to avoid overwhelming responses
+        timeout=120,  # 2 minutes timeout to fail faster
+        max_retries=5,  # More retries with backoff
+        seed=42,  # Fixed seed for deterministic outputs (reduces run-to-run variation)
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+        aws_region_name=os.getenv('AWS_REGION', 'us-east-1')
+    )
 
 
 @CrewBase
@@ -68,17 +66,43 @@ class LocalizeAgent:
         self._print_llm_config()
     
     def _print_llm_config(self):
-        model = os.getenv("MODEL", "gemini/gemini-2.0-flash")
-        print(f"[OK] Active model: {model}")
+        """Print LLM configuration info"""
+        model = os.getenv("PRIMARY_MODEL", "bedrock/anthropic.claude-3-haiku-20240307-v1:0")
+        
+        print(f"[OK] Primary Model: {model}")
+        print(f"[OK] AWS Region: {os.getenv('AWS_REGION', 'us-east-1')}")
+        print(f"[INFO] Using AWS Bedrock (Gemini disabled)")
     
+    @agent
     def planning_agent(self) -> Agent:
-        # planning_agent is intentionally NOT decorated with @agent.
-        # It is excluded from the active pipeline — no task uses its output as context.
-        # Keeping this method only for reference; it is never called by the crew.
+        def delegate_tasks():
+            # Trigger design_issue_identification_agent
+            print("Debug: Triggering design_issue_identification_agent...")
+            design_issues = self.design_issue_identification_agent.run()
+            print(f"Debug: Design issues identified: {design_issues}")
+
+            # Trigger code_analyzer_agent based on design issues
+            if design_issues:
+                print("Debug: Triggering code_analyzer_agent...")
+                analysis_results = self.code_analyzer_agent.run(input_data=design_issues)
+                print(f"Debug: Code analysis results: {analysis_results}")
+
+                # Trigger prompt_engineering_agent based on analysis results
+                if analysis_results:
+                    print("Debug: Triggering prompt_engineering_agent...")
+                    prompt = self.prompt_engineering_agent.run(input_data=analysis_results)
+                    print(f"Debug: Prompt generated: {prompt}")
+
+            # The rest of the tasks can be executed sequentially
+            print("Debug: Triggering remaining tasks sequentially...")
+            self.design_issue_localization_agent.run()
+            self.ranking_agent.run()
+
         return Agent(
             config=self.agents_config['planning_agent'],
             llm=self.llm,
-            verbose=False
+            delegate=delegate_tasks,
+            verbose=True
         )
     
     @agent
@@ -91,17 +115,13 @@ class LocalizeAgent:
     
     @agent
     def code_analyzer_agent(self) -> Agent:
-        # Tools have been removed from this agent intentionally.
-        # Metrics (CountMethods, VariableUsage, FanInFanOut, ClassCoupling) are now
-        # pre-computed in Python via _compute_metrics() in batch_analyzer.py and
-        # injected as the {metrics} template variable. This eliminates the ReAct
-        # tool-call loop that caused Haiku to send the full source code 9 times,
-        # which overflowed the context and produced empty LLM responses.
         return Agent(
             config=self.agents_config['code_analyzer_agent'],
             llm=self.llm,
-            verbose=True,
-            allow_delegation=False
+            tools=[CountMethods(), VariableUsage(), FanInFanOutAnalysis(), ClassCouplingAnalysis()],
+            verbose=True,  # Enable verbose to see what's happening
+            max_iter=5,  # Limit iterations to prevent infinite loops
+            allow_delegation=False  # Prevent delegation issues
         )
     
     @agent
@@ -128,10 +148,8 @@ class LocalizeAgent:
             verbose=False
         )
     
+    @task
     def planning_task(self) -> Task:
-        # planning_task is intentionally NOT decorated with @task.
-        # Removing @task prevents CrewBase from auto-registering it in self.tasks,
-        # so it never runs. No downstream task references it as context.
         return Task(
             config=self.tasks_config['planning_task'],
             output_file='planning_report.md',
@@ -174,27 +192,10 @@ class LocalizeAgent:
     
     @crew
     def crew(self) -> Crew:
-        """Creates the Code Analysis Crew that orchestrates all agents and tasks.
-
-        planning_task is registered via @task (so CrewBase picks it up) but is
-        intentionally excluded from the active task list here.  No downstream task
-        uses it as context, so it was a wasted LLM call.  The active pipeline is:
-          1. design_issue_identification_task
-          2. code_analysis_task
-          3. prompt_engineering_task
-          4. design_issue_localization_task
-          5. ranking_task
-        """
-        active_tasks = [
-            self.design_issue_identification_task(),
-            self.code_analysis_task(),
-            self.prompt_engineering_task(),
-            self.design_issue_localization_task(),
-            self.ranking_task(),
-        ]
+        """Creates the Code Analysis Crew that orchestrates all agents and tasks."""
         return Crew(
-            agents=self.agents,
-            tasks=active_tasks,
+            agents=self.agents,    # Automatically registered via @agent
+            tasks=self.tasks,      # Automatically registered via @task
             process=Process.sequential,
             verbose=True
         )
