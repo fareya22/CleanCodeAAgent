@@ -1,0 +1,229 @@
+planning_task:
+  description: >
+    Create a brief, step-by-step analysis plan that includes:
+    1. Design Issue Identification Phase:
+       - Specify which code elements to analyze (classes, methods, dependencies)
+       - Define criteria for identifying modularity, complexity, information hiding, god class, and feature envy issues
+       - IMPORTANT: God Class should ONLY count business logic methods (exclude getters/setters). Only flag if business logic methods > 5. Do NOT flag model/DTO classes that only have getters/setters.
+       - Feature Envy: Method using 4+ fields from ANOTHER class (not its own)
+       - Information Hiding: (a) class exposes public instance fields, (b) method directly accesses public fields of another object
+       - Complexity: includes inline variable (single-use variable) and inline method (trivial one-liner called once)
+       - List specific metrics to measure (e.g., coupling, cohesion, class size, business method count excluding getters/setters)
+
+    2. Code Analysis Phase:
+       - Specify dependencies and relationships to examine
+
+    3. Prompt Engineering Phase:
+       - Outline key elements to include in the analysis summary
+       - Define criteria for selecting code sections to refactor
+
+    4. Issue Localization Phase:
+       - Define priority criteria for selecting refactoring targets
+       - Specify validation checks for proposed refactorings
+
+    5. Ranking Phase:
+       - Define criteria for ranking refactoring suggestions based on impact and feasibility
+
+  expected_output: >
+    A structured analysis plan document containing: Issue Identification Strategy, Analysis Execution Plan, Prompt Construction Guidelines, Localization Criteria, and Ranking Strategy. Each section should be clearly defined and actionable.
+
+  agent: planning_agent
+
+design_issue_identification_task:
+  description: >
+    Conduct an initial review of the following code to identify design issues.
+    
+    CRITICAL CONSISTENCY REQUIREMENTS:
+    - You MUST perform an EXHAUSTIVE, SYSTEMATIC analysis checking EVERY issue type
+    - Do NOT stop early - check ALL 7 categories below even if you find issues in the first category
+    - Your analysis MUST be 100% CONSISTENT - the exact same code MUST produce the exact same results every single time
+    - Process the code in a fixed, deterministic order: god class → feature envy → complexity → modularity → information hiding
+
+    ISSUE TYPES AND DETECTION RULES (check ALL of these):
+    - "god class": Count ONLY business logic methods (exclude getters/setters like get*, set*, is*). Only flag if business method count > 5. Do NOT flag model/DTO classes.
+    - "feature envy": A method that uses 4+ fields from ANOTHER class's data directly.
+    - "complexity": ANY of the following (CHECK ALL):
+        * Cyclomatic complexity > 5 or nesting depth > 3
+        * **INLINE VARIABLE PATTERN**: A local variable that is:
+          - Declared and assigned a value (int x = someMethod())
+          - Used EXACTLY ONCE on the immediately following line (otherMethod(x))
+          - Serves only as an intermediary (can be replaced by otherMethod(someMethod()))
+          - EXAMPLES:
+            int laptopIndex = 0;
+            manager.placeOrder(laptopIndex, 2);  // ← laptopIndex used once, inline it!
+            
+            boolean status = checkStock(i, 1);
+            if (status) { ... }  // ← status used once, inline it as if (checkStock(i, 1))
+        * A method whose entire body is a single trivial expression and is called only once → "inline method" refactoring
+        * Method > 25 lines → "extract method" refactoring
+    - "modularity": Poor separation of concerns, multiple responsibilities in one class.
+    - "information hiding": (a) class has actual public instance fields (not methods). (b) a method in this class directly sets or reads public fields of ANOTHER object via dot-notation (obj.field = ... or reading obj.field), bypassing encapsulation.
+
+    MANDATORY SYSTEMATIC ANALYSIS CHECKLIST (DO ALL 7 CHECKS, NO EXCEPTIONS):
+    1. Count business logic methods (exclude get*/set*/is*) → check if > 5 for "god class" ✓
+    2. Scan EVERY method for external field accesses → count fields accessed from other classes, if any method accesses 4+ flag "feature envy" ✓
+    3. Check for public instance fields in the class → if found, flag "information hiding" ✓
+    4. Check EVERY method for direct field access on external objects (obj.field = ...) → if found, flag "information hiding" ✓
+    5. **CRITICAL INLINE VARIABLE CHECK**: Read through the ENTIRE code line by line. For EACH local variable declaration:
+       - Check if the variable is used ONLY ONCE on the very next line
+       - Pattern: Type varName = value; useVarOnNextLine(varName);
+       - If found, flag "complexity" with "inline variable" refactoring
+       - DO NOT SKIP THIS - inline variables are VERY COMMON in main() methods! ✓
+    6. Check EVERY method for complexity (cyclomatic > 5, nesting > 3, long method > 25 lines, trivial one-liners called once) → if found, flag "complexity" ✓
+    7. Check for multiple unrelated responsibilities in one class → if found, flag "modularity" ✓
+    
+    IMPORTANT: You must complete ALL 7 checks above. Do not stop after finding the first issue. PAY SPECIAL ATTENTION TO CHECK #5 - inline variables are often missed! The same input code must ALWAYS produce the same output.
+
+    Code to analyze:
+    {code}
+
+    Output a JSON object with EXACTLY TWO keys:
+    - "design_issues": array of ALL applicable types from the list above (can be multiple)
+    - "refactoring_types": array of ALL applicable refactoring strings from ["move method", "extract class", "extract method", "parameterize variable", "inline variable", "inline method"] (one entry per distinct issue found)
+
+    Example for a file with inline variables only:
+    {"design_issues": ["complexity"], "refactoring_types": ["inline variable"]}
+
+    Example for a file with multiple issues:
+    {"design_issues": ["information hiding", "god class", "feature envy"], "refactoring_types": ["extract class", "move method"]}
+
+  expected_output: >
+    A JSON object with two keys:
+    - "design_issues": an array of ALL applicable design issue types found.
+    - "refactoring_types": an array of ALL applicable refactoring strings from ["move method", "extract class", "extract method", "parameterize variable", "inline variable", "inline method"].
+    Example: {"design_issues": ["complexity", "information hiding", "god class"], "refactoring_types": ["inline variable", "extract class"]}
+    Do not include any extra data. Output ONLY the JSON object.
+  agent: design_issue_identification_agent
+
+code_analysis_task:
+  description: >
+    Using the design issues identified by the design_issue_identification_agent, interpret
+    the following pre-computed static analysis metrics and produce a targeted analysis report.
+
+    Pre-computed static analysis metrics (already computed from the code):
+    {metrics}
+
+    IMPORTANT GUIDELINES FOR METRIC ANALYSIS:
+    - For God Class: Count ONLY business logic methods (exclude get*, set*, is* patterns). Only report as God Class issue if business method count > 5 AND the class is not purely a model/DTO.
+    - For Feature Envy: Count cross-class field accesses (4+ fields from another class).
+    - For Information Hiding: Count ACTUAL PUBLIC FIELDS (not public methods). Also count direct dot-notation field accesses on external objects.
+    - **For Inline Variable**: The VariableUsage tool output shows "assigned once, used once" - count how many such variables exist. EACH one is a separate inline variable candidate.
+    - For Complexity/Inline Variable: Count single-use local variables. Count trivial one-liner methods.
+    - Always distinguish between model/DTO classes and business logic classes.
+
+    Explain how the metrics relate to the identified design issues and the suggested refactoring types.
+    Do NOT re-include the source code — rely on the metrics and the issue identification output above.
+
+  expected_output: >
+    A comprehensive and structured analysis report that includes:
+      - Reasoning over the provided metrics, explaining their relevance to the identified design issue.
+      - Quantitative metrics (e.g., business logic method count excluding getters/setters, fan-in, fan-out, single-use variable count) relevant to the design issue.
+      - Clear distinction: "X business logic methods (excluding Y getters/setters)" for God Class checks.
+      - Qualitative commentary on how these metrics reflect the impact of the identified design issue.
+      - A clear explanation linking the analysis results with the recommended refactoring type.
+  agent: code_analyzer_agent
+  context:
+    - design_issue_identification_task
+
+prompt_engineering_task:
+  description: >
+    Based on the outputs from the design issue identification and code analysis tasks, create a clear and actionable prompt for the design_issue_localization_agent. Your task is to construct a dictionary called "prompt" with three keys:
+      - "query": A clear question asking which classes, functions, or variables should be refactored. Include ALL detected design issue types and ALL applicable refactoring types. Example: "Which methods exhibit feature envy, which variables are inline candidates, and which public fields violate information hiding?"
+      - "code_snippet": the whole input code {code}.
+      - "analysis_summary": A concise ~80-100 word summary covering ALL identified design issues (not just one), including key metrics and specific examples for each issue type (e.g., for inline variable: name the specific variables; for information hiding: name the public fields; for feature envy: name the methods and which class fields they access).
+    The instructions must be explicit, unambiguous, and robust to guide the localization process for ALL issues found.
+  expected_output: >
+    A dictionary named "prompt" structured as follows:
+    {
+      "query": "Which classes, functions, or variables should be refactored to address ALL identified design issues?",
+      "code_snippet": "<the provided source code>",
+      "analysis_summary": "A summary covering ALL identified design issues, including key metrics and their relation to each issue type and its applicable refactoring recommendation."
+    }
+  agent: prompt_engineering_agent
+  context:
+    - design_issue_identification_task
+    - code_analysis_task
+
+design_issue_localization_task:
+  description: >
+    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the code and determine the class and method (or variable, if applicable) that need to be refactored for EACH identified design issue. If there are multiple functions, variables, or classes to refactor, generate a separate JSON object for each one.
+
+    CRITICAL CONSISTENCY AND EXHAUSTIVENESS REQUIREMENTS:
+    1. EXHAUSTIVE REPORTING: You MUST report issues for ALL design issue types that were identified in the previous stages - NO EXCEPTIONS
+    2. If "information hiding", "feature envy", AND "inline variable" were all identified, you MUST produce separate JSON objects for EACH type
+    3. Do NOT cherry-pick, summarize, or focus on only the most obvious issues - report EVERY SINGLE instance found
+    4. MANDATORY CONSISTENCY: Process issues in a fixed order: god class → feature envy → complexity → modularity → information hiding. The exact same input MUST produce the exact same output every time.
+    5. Count and verify: If the previous stage identified N issues, you must produce at least N JSON objects (more if there are multiple instances of the same type)
+
+    The output must be a JSON array where each object contains EXACTLY these six keys:
+    - "Class name": The class containing the issue
+    - "Function name": The method containing the issue (or "N/A" for class-level issues)
+    - "Function signature": Full method signature
+    - "refactoring_type": Must be one of: move method, extract class, extract method, parameterize variable, inline variable, inline method
+    - "rationale": MUST explicitly state: (1) which design issue this targets, (2) specific code evidence (e.g., "Variable 'laptopIndex' assigned on line 32 and used only once on line 33")
+    - "line": Integer line number where the function/variable/class is defined
+
+    SPECIFIC RULES FOR EACH ISSUE TYPE:
+    - **For "inline variable": EACH single-use variable gets its OWN SEPARATE JSON object**
+      - If main() has 5 inline variables (laptopIndex, mouseIndex, bulkQty, status, available), produce 5 separate JSON objects
+      - Do NOT summarize multiple inline variables into one object
+      - Pattern to detect: variable declaration followed immediately by single use
+    - For "extract class": identify which methods/fields to move to the new class
+    - For "information hiding": flag both (a) classes with public instance fields AND (b) methods that access public fields of other objects via dot-notation
+    - For "feature envy": flag methods that access 4+ fields from another class
+    - For "god class": flag classes with more than 5 business logic methods (excluding getters/setters)
+
+  expected_output: >
+    A JSON array, output ONLY the array with no extra text:
+    [
+      {
+        "Class name": "Identified class name",
+        "Function name": "Identified function name",
+        "Function signature": "Identified function signature",
+        "refactoring_type": "inline variable",
+        "rationale": "Variable 'laptopIndex' is assigned on line 32 and used exactly once on line 33. It can be inlined as manager.placeOrder(0, 2).",
+        "line": 32
+      }
+    ]
+  agent: design_issue_localization_agent
+  context:
+    - prompt_engineering_task
+
+ranking_task:
+  description: >
+    Rank the outputs from the design_issue_localization_agent based on their importance.
+    Priority order: god class (1st) > feature envy (2nd) > complexity (3rd) > modularity (4th) > information hiding (5th).
+    Within same category, rank by impact scope (methods affecting many callers ranked higher).
+    
+    For EACH object:
+    1. Add a "rank" key (integer starting from 1)
+    2. Add an "issue_type" key - use BOTH rationale AND refactoring_type field to determine:
+       - If rationale mentions "god class" OR "God class" → "God Class"
+       - If refactoring_type is "extract class" AND rationale does NOT mention "feature envy" → "God Class"
+       - If rationale mentions "feature envy" OR "Feature Envy" → "Feature Envy"
+       - If refactoring_type is "move method" → "Feature Envy"
+       - If refactoring_type is "inline variable" OR "inline method" OR "parameterize variable" OR "extract method" → "Complexity"
+       - If rationale mentions "complexity" OR "cyclomatic" OR "nesting" OR "hard-coded" OR "magic number" → "Complexity"
+       - If rationale mentions "modularity" OR "separation of concerns" → "Modularity"
+       - If rationale mentions "information hiding" OR "public field" OR "encapsulation" → "Information Hiding"
+    3. The issue_type MUST be one of these 5 values ONLY: "God Class", "Feature Envy", "Complexity", "Modularity", "Information Hiding"
+    4. Preserve ALL other keys including "line"
+    5. IMPORTANT: Process the rules in order from top to bottom. First match wins.
+
+  expected_output: >
+    A JSON array (output ONLY the array, no extra text):
+    [
+      {
+        "Class name": "Identified class name",
+        "Function name": "Identified function name",
+        "Function signature": "Identified function signature",
+        "refactoring_type": "One of: move method, extract class, extract method, parameterize variable, inline variable, inline method",
+        "rationale": "Brief explanation referencing specific design issue and code evidence",
+        "line": 42,
+        "rank": 1,
+        "issue_type": "God Class"
+      }
+    ]
+  agent: ranking_agent
+  context:
+    - design_issue_localization_task

@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "CleanCodeAgent",
+  "version": "1.0.0",
+  "description": "AI-powered code design issue detection for GitHub",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://github.com/*",
+    "https://api.github.com/*",
+    "http://localhost:5000/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://github.com/*/*"],
+      "js": [
+        "lib/jquery.min.js",
+        "lib/jstree.min.js",
+        "content/github-adapter.js",
+        "content/analysis-engine.js",
+        "content/content.js"
+      ],
+      "css": ["sidebar/sidebar.css"],
+      "run_at": "document_end"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

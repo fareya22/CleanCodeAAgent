@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.analysis_cache/
+tmpclaude-*-cwd
+uv.lock
+*.md
+tests/
+*.json
+*.log
