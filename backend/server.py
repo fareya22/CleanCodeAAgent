@@ -1,8 +1,3 @@
-"""
-Flask API Server for CleanCodeAgent Chrome Extension
-Wraps existing CrewAI multi-agent system
-"""
-
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
@@ -15,7 +10,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 try:
     from localize_agent.crew import LocalizeAgent
     from localize_agent.batch_analyzer import BatchAnalyzer
@@ -27,9 +21,7 @@ except ModuleNotFoundError:
 app = Flask(__name__)
 CORS(app)  
 
-
 analysis_cache = {}
-
 
 MONGO_URI = os.environ.get("MONGO_URI")
 _mongo_client = None
@@ -45,7 +37,6 @@ def get_feedback_collection():
 
 @app.route('/health', methods=['GET'])
 def health_check():
-    """Check if server is running"""
     return jsonify({
         "status": "ok",
         "message": "CleanCodeAgent API is running",
@@ -54,15 +45,6 @@ def health_check():
 
 @app.route('/feedback', methods=['GET', 'POST'])
 def submit_feedback():
-    """
-    Save user feedback to MongoDB
-
-    Request JSON:
-    {
-        "email": "user@example.com",
-        "comment": "The analysis missed a god class in UserService.java"
-    }
-    """
     try:
         if request.method == 'GET':
             return jsonify({
@@ -106,30 +88,6 @@ def submit_feedback():
 
 @app.route('/analyze', methods=['POST'])
 def analyze_repository():
-    """
-    Analyze multiple files from a repository using batch analyzer
-    
-    Request JSON:
-    {
-        "repo": "username/reponame",
-        "files": [
-            {"path": "src/Main.java", "content": "...code..."},
-            {"path": "src/User.java", "content": "...code..."}
-        ]
-    }
-    
-    Response JSON:
-    {
-        "status": "success",
-        "repo": "username/reponame",
-        "results": [
-            {
-                "file": "src/Main.java",
-                "issues": [...]
-            }
-        ]
-    }
-    """
     try:
         data = request.json
         repo = data.get('repo', 'unknown')
@@ -146,7 +104,6 @@ def analyze_repository():
         print(f"[API] 📄 Number of files: {len(files)}")
         print(f"{'='*60}\n")
         
-        # Parse repo info for GitHub URL generation (optional)
         branch = data.get('branch', 'main')
         repo_info = None
         if repo and '/' in repo:
@@ -159,24 +116,20 @@ def analyze_repository():
                 }
                 print(f"[API] 🔗 GitHub links enabled: {repo} (branch: {branch})")
         
-        # Use BatchAnalyzer with defaults from batch_analyzer.py (delay=2s, retries=3, backoff=2)
-        # Optional: Enable consistency check via ENABLE_CONSISTENCY_CHECK=true env variable
         enable_check = os.getenv('ENABLE_CONSISTENCY_CHECK', 'false').lower() == 'true'
         batch_analyzer = BatchAnalyzer(max_workers=1, repo_info=repo_info, enable_consistency_check=enable_check)
         all_results = batch_analyzer.analyze_repository(files, repo)
         
-        # Cache results
         cache_key = repo
         analysis_cache[cache_key] = all_results
         
-        # Calculate summary
         total_issues = sum(len(r.get('issues', [])) for r in all_results)
         successful = len([r for r in all_results if r['status'] == 'success'])
         
         print(f"\n{'='*60}")
-        print(f"[API] ✅ Analysis complete for {repo}")
-        print(f"[API] 📊 Successful: {successful}/{len(all_results)}")
-        print(f"[API] 🐛 Total issues: {total_issues}")
+        print(f"[API]  Analysis complete for {repo}")
+        print(f"[API]  Successful: {successful}/{len(all_results)}")
+        print(f"[API]  Total issues: {total_issues}")
         print(f"{'='*60}\n")
         
         return jsonify({
@@ -200,24 +153,6 @@ def analyze_repository():
 
 @app.route('/analyze-file', methods=['POST'])
 def analyze_file():
-    """
-    Analyze a single file
-    
-    Request JSON:
-    {
-        "path": "src/Main.java",
-        "content": "...code...",
-        "repo": "username/reponame" (optional),
-        "branch": "main" (optional)
-    }
-    
-    Response JSON:
-    {
-        "status": "success",
-        "file": "src/Main.java",
-        "issues": [...]
-    }
-    """
     try:
         data = request.json
         file_path = data.get('path', 'unknown.java')
@@ -234,7 +169,6 @@ def analyze_file():
         print(f"\n[API] Analyzing single file: {file_path}")
         print(f"[API] Code length: {len(code_content)} characters")
         
-        # Parse repo info for GitHub URL generation (optional)
         repo_info = None
         if repo and '/' in repo:
             parts = repo.split('/')
@@ -246,10 +180,8 @@ def analyze_file():
                 }
                 print(f"[API] 🔗 GitHub links enabled: {repo} (branch: {branch})")
         
-        # Run analysis
         result = analyze_single_file(code_content, file_path, repo_info)
         
-        # result is now a dict with 'issues' and 'summary'
         issues = result.get('issues', [])
         summary = result.get('summary', '')
         
@@ -271,19 +203,9 @@ def analyze_file():
         }), 500
 
 def analyze_single_file(code_content, file_path="unknown", repo_info=None):
-    """
-    Run your CrewAI agents on a single file
-    Returns dict with 'issues' list and 'summary' explanation text
-    
-    Args:
-        code_content: Source code to analyze
-        file_path: Path to the file
-        repo_info: Optional dict with 'owner', 'repo', 'branch' for GitHub URLs
-    """
     print(f"[CREW] Starting analysis...")
     print(f"[CREW] Code length: {len(code_content)} characters")
     
-    # Validate input
     if not code_content or len(code_content.strip()) == 0:
         print(f"[CREW] ERROR: Empty code content provided")
         return {
@@ -291,13 +213,11 @@ def analyze_single_file(code_content, file_path="unknown", repo_info=None):
             "summary": "Error: No code content to analyze."
         }
     
-    # Use BatchAnalyzer for consistency (includes filtering)
-    # Optional: Enable consistency check via ENABLE_CONSISTENCY_CHECK=true env variable
     enable_check = os.getenv('ENABLE_CONSISTENCY_CHECK', 'false').lower() == 'true'
     batch_analyzer = BatchAnalyzer(max_workers=1, delay_between_files=0, repo_info=repo_info, enable_consistency_check=enable_check)
     
     try:
-        # Analyze using batch analyzer (includes filtering)
+        
         issues = batch_analyzer.analyze_single_file(code_content, file_path)
         
         print(f"[CREW] ✅ Analysis complete: {len(issues)} issues found")
@@ -314,22 +234,16 @@ def analyze_single_file(code_content, file_path="unknown", repo_info=None):
         return create_fallback_issues(code_content, file_path, repo_info)
 
 def create_fallback_issues(code_content, file_path, repo_info=None):
-    """
-    Create basic fallback issues when LLM fails
-    This helps debug and shows user something is working
-    """
     issues = []
     
-    # Simple heuristics for common issues
     lines = code_content.split('\n')
     
-    # Check for long methods
     in_method = False
     method_line_count = 0
     method_name = ""
     
     for i, line in enumerate(lines, 1):
-        # Very simple Java method detection
+    
         if 'public ' in line and '(' in line and '{' in line:
             in_method = True
             method_name = line.split('(')[0].split()[-1]
@@ -348,7 +262,7 @@ def create_fallback_issues(code_content, file_path, repo_info=None):
                         "severity": "high",
                         "line": i - method_line_count
                     }
-                    # Add GitHub URL if repo_info available
+                    
                     if repo_info and repo_info.get('owner') and repo_info.get('repo'):
                         owner = repo_info['owner']
                         repo = repo_info['repo']
@@ -357,7 +271,6 @@ def create_fallback_issues(code_content, file_path, repo_info=None):
                     issues.append(issue)
                 in_method = False
     
-    # Check for god class (too many methods/fields)
     method_count = code_content.count('public ') + code_content.count('private ')
     if method_count > 15:
         issue = {
@@ -370,7 +283,7 @@ def create_fallback_issues(code_content, file_path, repo_info=None):
             "severity": "high",
             "line": 1
         }
-        # Add GitHub URL if repo_info available
+        
         if repo_info and repo_info.get('owner') and repo_info.get('repo'):
             owner = repo_info['owner']
             repo = repo_info['repo']
@@ -385,17 +298,12 @@ def create_fallback_issues(code_content, file_path, repo_info=None):
     }
 
 def parse_ranking_report(report_text):
-    """
-    Parse the ranking_report.md and extract issues
-    """
     import re
     
     try:
-        # Clean up the report text - remove markdown formatting
+        
         clean_text = report_text.strip()
         
-        # Method 1: Try to find JSON array at the start
-        # Look for [ at the beginning and ] followed by explanatory text
         match = re.search(r'^(\[\s*\{[\s\S]*?\}\s*\])', clean_text, re.MULTILINE)
         
         if match:
@@ -408,7 +316,7 @@ def parse_ranking_report(report_text):
                     return issues
             except json.JSONDecodeError as e:
                 print(f"[PARSE] JSON decode error: {e}")
-                # Try to fix common issues
+                
                 json_str = json_str.replace('\n', ' ').replace('\r', '')
                 try:
                     issues = json.loads(json_str)
@@ -416,7 +324,6 @@ def parse_ranking_report(report_text):
                 except:
                     pass
         
-        # Method 2: Look for JSON in code blocks
         code_block_match = re.search(r'```(?:json)?\s*(\[[\s\S]*?\])\s*```', report_text)
         
         if code_block_match:
@@ -425,7 +332,6 @@ def parse_ranking_report(report_text):
             issues = json.loads(json_str)
             return issues
         
-        # Method 3: Try to extract individual issue objects
         issues = []
         issue_pattern = r'\{[^}]*"Class name"[^}]*"Function name"[^}]*"refactoring_type"[^}]*\}'
         matches = re.finditer(issue_pattern, report_text, re.DOTALL)
@@ -469,7 +375,6 @@ if __name__ == '__main__':
     print("="*60)
     print()
     
-    # Run Flask server
     app.run(
         host='0.0.0.0',
         port=5000,

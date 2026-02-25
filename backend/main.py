@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 import sys
 import warnings
 import os
@@ -10,11 +9,9 @@ from crewai import LLM
 load_dotenv()
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
-
 litellm.drop_params = True  
 litellm.num_retries = 3  
 litellm.request_timeout = 600 
-
 
 PRIMARY_MODEL = "bedrock/anthropic.claude-3-haiku-20240307-v1:0"
 FALLBACK_MODEL = "bedrock/anthropic.claude-3-haiku-20240307-v1:0"
@@ -28,9 +25,6 @@ print("[OK] Using AWS Bedrock Claude 3 Haiku as primary model")
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
 def get_file_path(default_path=None):
-    """
-    Prompt user for file path or use the provided default.
-    """
     if default_path and os.path.exists(default_path):
         try:
             use_default = input(f"Use default file path ({default_path})? (y/n): ").lower() == 'y'
@@ -54,10 +48,6 @@ def get_file_path(default_path=None):
             raise
 
 def run():
-    """
-    Run the crew with AWS Bedrock Claude.
-    """
-    # Use absolute path to avoid working directory issues
     import pathlib
     base_dir = pathlib.Path(__file__).parent
     default_path = base_dir / 'datasets' / 'test_input.java'
@@ -83,11 +73,7 @@ def run():
         print(f"[ERROR] Error: {e}")
         raise Exception(f"An error occurred while running the crew: {e}")
 
-
 def train():
-    """
-    Train the crew for a given number of iterations.
-    """
     file_path = get_file_path()
     
     with open(file_path, 'r') as f:
@@ -103,9 +89,6 @@ def train():
         raise Exception(f"An error occurred while training the crew: {e}")
 
 def replay():
-    """
-    Replay the crew execution from a specific task.
-    """
     try:
         LocalizeAgent().crew().replay(task_id=sys.argv[1])
 
@@ -113,9 +96,6 @@ def replay():
         raise Exception(f"An error occurred while replaying the crew: {e}")
 
 def test():
-    """
-    Test the crew execution and returns the results.
-    """
     file_path = get_file_path()
     
     with open(file_path, 'r') as f:

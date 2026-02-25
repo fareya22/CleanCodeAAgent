@@ -1,11 +1,7 @@
-/**
- * Analysis Engine - Manages code analysis and issue tracking
- */
-
 class AnalysisEngine {
   constructor(apiUrl = 'http://localhost:5000') {
     this.apiUrl = apiUrl;
-    this.cache = new Map(); // Cache analysis results
+    this.cache = new Map(); 
   }
 
   
@@ -14,24 +10,24 @@ class AnalysisEngine {
     
     const cacheKey = `${repoInfo.username}/${repoInfo.reponame}`;
     
-    // Check cache
+    
     if (this.cache.has(cacheKey)) {
       console.log('[AnalysisEngine] Returning cached results');
       return this.cache.get(cacheKey);
     }
 
-    // Filter analyzable files
+    
     const analyzableFiles = files.filter(f => this.isAnalyzable(f.path));
     console.log(`[AnalysisEngine] Found ${analyzableFiles.length} analyzable files`);
 
     try {
-      // Prepare file data
+      
       const filesData = await this._prepareFiles(repoInfo, analyzableFiles);
 
-      // Call backend API
+      
       const results = await this._callAnalysisAPI(cacheKey, filesData);
 
-      // Cache results
+
       this.cache.set(cacheKey, results);
 
       return results;
@@ -42,9 +38,7 @@ class AnalysisEngine {
     }
   }
 
-  /**
-   * Analyze single file
-   */
+  
   async analyzeFile(repoInfo, filePath, fileContent) {
     console.log(`[AnalysisEngine] Analyzing file: ${filePath}`);
 
@@ -74,9 +68,7 @@ class AnalysisEngine {
     }
   }
 
-  /**
-   * Check if file is analyzable
-   */
+  
   isAnalyzable(filePath) {
     const analyzableExtensions = [
       '.java', '.js', '.jsx', '.ts', '.tsx',
@@ -87,15 +79,13 @@ class AnalysisEngine {
     return analyzableExtensions.some(ext => filePath.toLowerCase().endsWith(ext));
   }
 
-  /**
-   * Prepare files for analysis
-   */
+  
   async _prepareFiles(repoInfo, files) {
     const adapter = new GitHubAdapter();
     await adapter.loadToken();
     
     const filesData = [];
-    const maxFiles = 20; // Limit for demo/performance
+    const maxFiles = 20; 
 
     for (let i = 0; i < Math.min(files.length, maxFiles); i++) {
       const file = files[i];
@@ -116,9 +106,7 @@ class AnalysisEngine {
     return filesData;
   }
 
-  /**
-   * Call backend analysis API
-   */
+  
   async _callAnalysisAPI(repo, filesData) {
     console.log(`[AnalysisEngine] Calling API for ${filesData.length} files...`);
 
@@ -146,13 +134,11 @@ class AnalysisEngine {
     return result.results;
   }
 
-  /**
-   * Process analysis results and update tree
-   */
+  
   updateTreeWithIssues(tree, analysisResults) {
     console.log('[AnalysisEngine] Updating tree with issues...');
 
-    // Create file-to-issues map
+    
     const issueMap = new Map();
     
     analysisResults.forEach(result => {
@@ -161,15 +147,13 @@ class AnalysisEngine {
       }
     });
 
-    // Update tree nodes
+    
     this._updateTreeNodes(tree, issueMap);
 
     return tree;
   }
 
-  /**
-   * Recursively update tree nodes with issue data
-   */
+  
   _updateTreeNodes(nodes, issueMap) {
     nodes.forEach(node => {
       if (node.type === 'blob' && issueMap.has(node.path)) {
@@ -182,7 +166,7 @@ class AnalysisEngine {
       if (node.children) {
         this._updateTreeNodes(node.children, issueMap);
         
-        // Propagate issue counts to parent folders
+        
         const childIssueCount = node.children.reduce((sum, child) => sum + (child.issueCount || 0), 0);
         if (childIssueCount > 0) {
           node.issueCount = childIssueCount;
@@ -192,9 +176,7 @@ class AnalysisEngine {
     });
   }
 
-  /**
-   * Calculate overall severity based on issue ranks
-   */
+  
   _calculateSeverity(issues) {
     if (!issues || issues.length === 0) return 'none';
 
@@ -205,9 +187,7 @@ class AnalysisEngine {
     return 'low';
   }
 
-  /**
-   * Get issue summary statistics
-   */
+ 
   getIssueSummary(analysisResults) {
     let totalIssues = 0;
     let highPriority = 0;
@@ -221,13 +201,13 @@ class AnalysisEngine {
         result.issues.forEach(issue => {
           totalIssues++;
 
-          // Count by priority
+          
           const rank = issue.rank || 999;
           if (rank <= 2) highPriority++;
           else if (rank <= 5) mediumPriority++;
           else lowPriority++;
 
-          // Count by refactoring type
+          
           const refType = issue.refactoring_type || 'unknown';
           issuesByType[refType] = (issuesByType[refType] || 0) + 1;
         });
@@ -249,4 +229,3 @@ class AnalysisEngine {
     console.log('[AnalysisEngine] Cache cleared');
   }
 }
-

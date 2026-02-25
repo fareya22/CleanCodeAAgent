@@ -1,18 +1,13 @@
-// CleanCodeAgent - Main Content Script
-
 console.log('[CleanCodeAgent] Initializing...');
 
-// API server URL - configurable via popup settings
 let API_URL = 'http://localhost:5000';
 
-// Check if we're on a GitHub repository page
 function isGitHubRepoPage() {
   const path = window.location.pathname;
   const match = path.match(/^\/([^\/]+)\/([^\/]+)/);
   return match && !['settings', 'notifications', 'pulls', 'issues'].includes(match[1]);
 }
 
-// Listen for settings updates from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'settingsUpdated') {
     API_URL = message.apiUrl || 'http://localhost:5000';
@@ -20,18 +15,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Initialize extension when on repo page
 if (isGitHubRepoPage()) {
   console.log('[CleanCodeAgent] GitHub repo page detected');
 
-  // Load API URL from storage first, then initialize
+  
   chrome.storage.sync.get(['apiUrl'], (result) => {
     if (result.apiUrl) {
       API_URL = result.apiUrl;
       console.log('[CleanCodeAgent] Using configured API URL:', API_URL);
     }
 
-    // Wait for DOM to be ready
+    
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initExtension);
     } else {
@@ -40,37 +34,36 @@ if (isGitHubRepoPage()) {
   });
 }
 
-
 async function initExtension() {
   console.log('[CleanCodeAgent] Initializing extension...');
   
-  // Create sidebar
+  
   createSidebar();
   
-  // Initialize GitHub adapter
+  
   const adapter = new GitHubAdapter();
   
-  // Get repository info
+  
   const repoInfo = await adapter.getRepoInfo();
   console.log('[CleanCodeAgent] Repo:', repoInfo);
   
-  // Load file tree
+  
   const tree = await adapter.loadFileTree(repoInfo);
   console.log('[CleanCodeAgent] File tree loaded:', tree.length, 'top-level items');
   
-  // Debug: Count total items recursively
+  
   const totalItems = flattenTree(tree).length;
   console.log(`[CleanCodeAgent] Total items (flattened): ${totalItems}`);
   
-  // Render tree in sidebar
+ 
   renderFileTree(tree);
   
-  // Start analysis
+  
   analyzeRepository(repoInfo, tree);
 }
 
 function createSidebar() {
-  // Create sidebar HTML structure (similar to Octotree)
+ 
   const sidebarHTML = `
     <div class="cleancode-sidebar" id="cleancode-sidebar">
       <div class="cleancode-header">
@@ -85,21 +78,8 @@ function createSidebar() {
         </div>
       </div>
       
-      <div class="cleancode-tabs">
-        <button class="tab active" data-tab="tree">Files</button>
-        <button class="tab" data-tab="issues">Issues</button>
-      </div>
-      
       <div class="cleancode-content">
-        <div class="tab-content active" id="tab-tree">
-          <div class="cleancode-loading">
-            <div class="spinner"></div>
-            <p>Loading repository...</p>
-          </div>
-          <div id="cleancode-tree" class="cleancode-tree"></div>
-        </div>
-        
-        <div class="tab-content" id="tab-issues">
+        <div class="tab-content active" id="tab-issues">
           <div id="cleancode-issues-list" class="issues-list">
             <p class="placeholder">Analyzing code...</p>
           </div>
@@ -135,28 +115,27 @@ function createSidebar() {
   
   $('body').append(sidebarHTML);
   
-  // Cache clear button handler
+  
   $('#cache-clear-btn').click(function() {
     console.log('[CleanCodeAgent] Clearing cache...');
     if (window.analysisEngine) {
       window.analysisEngine.clearCache();
     }
-    // Reload the page to re-analyze
+    
     window.location.reload();
   });
   
-  // PDF Download button handler
+  
   $('#download-pdf-btn').click(function() {
     console.log('[CleanCodeAgent] Generating PDF report...');
     downloadAnalysisReport();
   });
 
-  // Feedback toggle
+  
   $('#feedback-toggle').click(function() {
     $('#feedback-form').toggleClass('hidden');
   });
 
-  // Feedback submit
   $('#feedback-submit-btn').click(function() {
     const email = $('#feedback-email').val().trim();
     const comment = $('#feedback-comment').val().trim();
@@ -167,7 +146,7 @@ function createSidebar() {
     submitFeedback(email, comment);
   });
   
-  // Toggle button click
+  
   $('#cleancode-toggle').click(function() {
     $('body').toggleClass('cleancode-show');
     if ($('body').hasClass('cleancode-show')) {
@@ -177,21 +156,13 @@ function createSidebar() {
     }
   });
   
-  // Tab switching
-  $('.cleancode-tabs .tab').click(function() {
-    const tabName = $(this).data('tab');
-    $('.cleancode-tabs .tab').removeClass('active');
-    $(this).addClass('active');
-    $('.tab-content').removeClass('active');
-    $(`#tab-${tabName}`).addClass('active');
-  });
 }
 
 function renderFileTree(tree) {
-  // Hide loading
+  
   $('.cleancode-loading').hide();
   
-  // Convert hierarchical tree to jsTree format recursively
+  
   function toJsTreeFormat(items) {
     if (!items || items.length === 0) return [];
     
@@ -203,7 +174,7 @@ function renderFileTree(tree) {
         data: item
       };
       
-      // If it's a folder and has children, recursively convert them
+      
       if (item.type === 'tree' && item.children && item.children.length > 0) {
         node.children = toJsTreeFormat(item.children);
       }
@@ -216,7 +187,7 @@ function renderFileTree(tree) {
   
   console.log('[CleanCodeAgent] Rendering tree with', treeData.length, 'root items');
   
-  // Initialize jsTree with worker disabled to avoid CSP violations
+  
   try {
     $('#cleancode-tree').jstree({
       core: {
@@ -225,15 +196,15 @@ function renderFileTree(tree) {
           name: 'default',
           responsive: true
         },
-        worker: false  // Disable web workers to comply with GitHub CSP
+        worker: false  
       }
     }).on('select_node.jstree', function(e, data) {
-      // File click করলে details dekhao
+      
       showFileDetails(data.node.data);
     });
   } catch (error) {
     console.error('[CleanCodeAgent] Error initializing jsTree:', error);
-    // Fallback: show simple file list if jsTree fails
+    
     showSimpleFileList(tree);
   }
 }
@@ -241,7 +212,7 @@ function renderFileTree(tree) {
 function showSimpleFileList(tree) {
   console.log('[CleanCodeAgent] Using fallback simple file list');
   
-  // Flatten tree for simple display
+  
   const allItems = flattenTree(tree);
   
   const listHTML = allItems.map(item => 
@@ -260,7 +231,6 @@ function showSimpleFileList(tree) {
   });
 }
 
-// Helper function to flatten hierarchical tree into a flat array
 function flattenTree(tree) {
   const result = [];
   
@@ -270,7 +240,7 @@ function flattenTree(tree) {
     for (const item of items) {
       result.push(item);
       
-      // Recursively traverse children if it's a folder
+      
       if (item.type === 'tree' && item.children) {
         traverse(item.children);
       }
@@ -284,15 +254,15 @@ function flattenTree(tree) {
 function restoreResultsUI(data, repoInfo) {
   const $issuesList = $('#cleancode-issues-list');
 
-  // Set global state
+  
   window.currentRepoInfo = repoInfo;
   window.analysisResults = data;
 
-  // Clear placeholder and prepare list
+  
   $('#tab-issues .placeholder').empty();
   $issuesList.empty();
 
-  // Re-render each file's result using the existing renderer (click handlers reattached)
+  
   data.results.forEach((result, index) => {
     addFileResultToUI({
       file: result.file,
@@ -301,7 +271,7 @@ function restoreResultsUI(data, repoInfo) {
     }, data.results.length, index + 1);
   });
 
-  // Restore summary header and tab badge
+  
   displayFinalSummary(
     data.results,
     data.summary.successfulFiles,
@@ -309,12 +279,12 @@ function restoreResultsUI(data, repoInfo) {
     data.summary.totalFiles
   );
 
-  // After restoring UI, check if there's a line number in URL hash and scroll to it
+  
   const hashMatch = window.location.hash.match(/L(\d+)/);
   if (hashMatch) {
     const lineNumber = parseInt(hashMatch[1]);
     console.log(`[Restore] Found line ${lineNumber} in URL hash, scrolling...`);
-    // Wait longer for GitHub's code rendering and DOM stabilization
+    
     setTimeout(() => {
       scrollToLineNumber(lineNumber);
     }, 800);
@@ -325,13 +295,13 @@ async function analyzeRepository(repoInfo, tree) {
   console.log('[CleanCodeAgent] Starting repository analysis...');
   console.log('[CleanCodeAgent] Tree structure received:', tree.length, 'top-level items');
 
-  // Store globally so issue cards can build fallback GitHub URLs
+  
   window.currentRepoInfo = repoInfo;
 
-  // If we arrived here via an issue-click navigation, restore previous results instead of re-analyzing
+  
   const savedRestore = sessionStorage.getItem('cleancode_restore');
   if (savedRestore) {
-    sessionStorage.removeItem('cleancode_restore'); // consume once
+    sessionStorage.removeItem('cleancode_restore'); 
     try {
       const data = JSON.parse(savedRestore);
       console.log('[CleanCodeAgent] Restoring results after navigation — skipping analysis');
@@ -342,7 +312,7 @@ async function analyzeRepository(repoInfo, tree) {
     }
   }
 
-  // Show analyzing status
+  
   $('#tab-issues .placeholder').html(`
     <div class="analyzing-status">
       <div class="spinner"></div>
@@ -352,23 +322,23 @@ async function analyzeRepository(repoInfo, tree) {
   `);
   
   try {
-    // Create global analysis engine instance
+    
     if (!window.analysisEngine) {
       window.analysisEngine = new AnalysisEngine(API_URL);
     }
     
-    // Flatten the hierarchical tree to get all files (including subdirectories)
+    
     const allFiles = flattenTree(tree);
     console.log(`[CleanCodeAgent] Total files after flattening: ${allFiles.length}`);
     
-    // Filter only Java files from ALL files (including subdirectories)
+    
     const javaFiles = allFiles.filter(item => 
       item.type === 'blob' && item.path.endsWith('.java')
     );
     
     console.log(`[CleanCodeAgent] Found ${javaFiles.length} Java files`);
     
-    // Debug: Log first 10 Java files found
+    
     if (javaFiles.length > 0) {
       console.log('[CleanCodeAgent] Sample Java files found:');
       javaFiles.slice(0, 10).forEach(file => {
@@ -377,7 +347,7 @@ async function analyzeRepository(repoInfo, tree) {
     }
     
     if (javaFiles.length === 0) {
-      // Show all files to help debug
+      
       console.log('[CleanCodeAgent] No Java files found. All files in repo:');
       allFiles.slice(0, 20).forEach(file => {
         console.log(`  - ${file.path} (${file.type})`);
@@ -397,25 +367,25 @@ async function analyzeRepository(repoInfo, tree) {
     
     updateAnalysisProgress(`Found ${javaFiles.length} Java files. Starting sequential analysis...`);
     
-    // Analyze files ONE-BY-ONE with progressive results (limit to first 15 files)
+    
     const maxFiles = 15;
     const filesToAnalyze = javaFiles.slice(0, maxFiles);
     const allResults = [];
     let successfulFiles = 0;
     let totalIssues = 0;
     
-    // Initialize results display
+    
     $('#tab-issues .placeholder').empty();
     const $issuesList = $('#cleancode-issues-list');
     $issuesList.empty();
     $issuesList.append(`<div id="live-progress-container" style="padding: 20px;"></div>`);
     
-    // Analyze each file sequentially
+    
     for (let i = 0; i < filesToAnalyze.length; i++) {
       const file = filesToAnalyze[i];
       const progressPercent = Math.round((i / filesToAnalyze.length) * 100);
       
-      // Show current file being analyzed
+      
       updateAnalysisProgress(`[${i + 1}/${filesToAnalyze.length}] Currently analyzing: ${file.path} (${progressPercent}%)`);
       
       const $progressContainer = $('#live-progress-container');
@@ -433,12 +403,12 @@ async function analyzeRepository(repoInfo, tree) {
       `);
       
       try {
-        // Fetch file content
+        
         console.log(`[CleanCodeAgent] Fetching file ${i + 1}/${filesToAnalyze.length}: ${file.path}`);
         const content = await fetchFileContent(repoInfo, file.path);
         console.log(`[CleanCodeAgent] ✓ Loaded ${file.path} (${content.length} chars)`);
         
-        // Analyze single file via API
+        
         console.log(`[CleanCodeAgent] Analyzing ${file.path}...`);
         const response = await fetch(`${API_URL}/analyze-file`, {
           method: 'POST',
@@ -467,7 +437,7 @@ async function analyzeRepository(repoInfo, tree) {
           const fileIssues = result.issues || [];
           totalIssues += fileIssues.length;
           
-          // Add/update file result in UI immediately (pass summary along with result)
+          
           addFileResultToUI({
             file: result.file,
             issues: result.issues,
@@ -494,18 +464,18 @@ async function analyzeRepository(repoInfo, tree) {
         });
       }
       
-      // Add delay between files to avoid rate limiting
+      
       if (i < filesToAnalyze.length - 1) {
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
     
-    // Final summary
+    
     console.log(`[CleanCodeAgent] ✅ Analysis complete for all ${filesToAnalyze.length} files`);
     removeCurrentFileIndicator();
     displayFinalSummary(allResults, successfulFiles, totalIssues, filesToAnalyze.length);
     
-    // Store results globally for PDF export
+    
     window.analysisResults = {
       repo: `${repoInfo.username}/${repoInfo.reponame}`,
       branch: repoInfo.branch,
@@ -548,7 +518,7 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
   const issues = fileResult.issues || [];
   const summary = fileResult.summary || '';
   
-  // Create file result container
+  
   const fileId = fileResult.file.replace(/[^a-zA-Z0-9]/g, '_');
   
   let fileHTML = `
@@ -570,7 +540,7 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
       <div class="issues-container" id="issues-${fileId}">
   `;
   
-  // Show summary if available
+  
   if (summary) {
     fileHTML += `
       <div class="analysis-summary-text" style="background: #f6f8fa; padding: 15px; border-radius: 4px; margin-bottom: 15px; font-size: 14px; line-height: 1.6; color: #57606a;">
@@ -586,19 +556,19 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
   if (issues.length === 0) {
     fileHTML += `<p class="no-issues" style="padding: 10px; color: #28a745;">No issues found in this file</p>`;
   } else {
-    // Sort by rank and display each issue
+    
     issues.sort((a, b) => (a.rank || 0) - (b.rank || 0));
     
     fileHTML += `<div style="margin-top: 15px;"><strong style="font-size: 13px; color: #57606a;">Identified Issues:</strong></div>`;
     
-    // Track links for click handler attachment
+    
     const linkHandlers = [];
     
     issues.forEach(issue => {
       const severityClass = getSeverityClass(issue.rank);
       const severityLabel = getSeverityLabel(issue.rank);
       
-      // Resolve GitHub URL - use issue URL if present, otherwise build from repo info
+      
       let githubUrl = (issue.github_url && issue.github_url.length > 0) ? issue.github_url : '';
 
       if (!githubUrl && window.currentRepoInfo) {
@@ -608,10 +578,10 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
 
       console.log(`[Issue Link] ${issue["Class name"]}.${issue["Function name"]} -> ${githubUrl}`);
 
-      // Extract issue type (with fallback parsing from rationale if not present)
+      
       const issueType = issue.issue_type || extractIssueTypeFromRationale(issue.rationale, issue.refactoring_type);
 
-      // Create clickable class.method name — navigation target (line) is embedded in githubUrl hash by backend AST
+      
       const classMethodText = `${issue["Class name"]}.${issue["Function name"]}`;
       const linkId = `issue-link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const clickableTitle = githubUrl
@@ -642,13 +612,13 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
         </div>
       `;
       
-      // Store link info for later attachment
+      
       if (githubUrl) {
         linkHandlers.push({ linkId, githubUrl });
       }
     });
   
-    // Attach click handlers after DOM insertion
+    
     setTimeout(() => {
       linkHandlers.forEach(({ linkId, githubUrl }) => {
         const link = document.getElementById(linkId);
@@ -668,16 +638,16 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
     </div>
   `;
   
-  // Append or update the file result
+  
   if ($issuesList.find(`.file-result-${fileId}`).length > 0) {
     $issuesList.find(`.file-result-${fileId}`).replaceWith(fileHTML);
   } else {
-    // Remove progress container if this is the first file result
+    
     if ($issuesList.find('.file-issues-group').length === 0) {
       $issuesList.find('#live-progress-container').remove();
     }
     
-    // If there's only the progress container, replace it; otherwise append
+    
     if ($issuesList.children().length === 1 && $issuesList.find('#live-progress-container').length > 0) {
       $issuesList.html(fileHTML);
     } else {
@@ -689,7 +659,7 @@ function addFileResultToUI(fileResult, totalFiles, currentIndex) {
 function displayFinalSummary(allResults, successfulFiles, totalIssues, totalFiles) {
   const $issuesList = $('#cleancode-issues-list');
   
-  // Create summary card
+  
   const summaryHTML = `
     <div class="analysis-summary" style="margin-bottom: 20px; margin-top: -10px;">
       <h3>📊 Analysis Summary</h3>
@@ -706,20 +676,12 @@ function displayFinalSummary(allResults, successfulFiles, totalIssues, totalFile
     </div>
   `;
   
-  // Prepend summary
+  
   $issuesList.prepend(summaryHTML);
   
-  // Update tab with issue count
-  if (totalIssues === 0) {
-    $('.tab[data-tab="issues"]').html(`Issues <span class="badge success">0</span>`);
-  } else {
-    $('.tab[data-tab="issues"]').html(`Issues <span class="badge">${totalIssues}</span>`);
-  }
   
-  // Switch to issues tab
-  $('.tab[data-tab="issues"]').click();
   
-  // Update tree with issue counts
+  
   const resultsWithIssues = allResults.filter(r => (r.issues || []).length > 0);
   updateTreeWithIssues(resultsWithIssues);
 }
@@ -735,7 +697,7 @@ async function fetchFileContent(repoInfo, filePath) {
   const response = await fetch(url);
   const data = await response.json();
   
-  // Decode base64 content
+  
   return atob(data.content);
 }
 
@@ -743,13 +705,13 @@ function displayAnalysisResults(results, summary) {
   const $issuesList = $('#cleancode-issues-list');
   $issuesList.empty();
   
-  // Check if we have any results
+  
   if (!results || results.length === 0) {
     $issuesList.html('<p class="placeholder">No files analyzed.</p>');
     return;
   }
   
-  // Add summary header
+  
   const totalIssues = summary?.total_issues || 0;
   const successfulFiles = summary?.successful_files || 0;
   const totalFiles = summary?.total_files || 0;
@@ -770,7 +732,7 @@ function displayAnalysisResults(results, summary) {
     </div>
   `);
   
-  // Show message if no issues found
+  
   if (totalIssues === 0) {
     $issuesList.append(`
       <div class="no-issues-message">
@@ -783,13 +745,13 @@ function displayAnalysisResults(results, summary) {
     return;
   }
   
-  // Display results for each file
+  
   results.forEach(fileResult => {
     const issues = fileResult.issues || [];
     
     if (issues.length === 0) return;
     
-    // File header
+    
     const fileId = fileResult.file.replace(/[^a-zA-Z0-9]/g, '_');
     $issuesList.append(`
       <div class="file-issues-group">
@@ -806,15 +768,15 @@ function displayAnalysisResults(results, summary) {
     
     const $container = $(`#issues-${fileId}`);
     
-    // Sort by rank
+    
     issues.sort((a, b) => (a.rank || 0) - (b.rank || 0));
     
-    // Display each issue
+    
     issues.forEach(issue => {
       const severityClass = getSeverityClass(issue.rank);
       const severityLabel = getSeverityLabel(issue.rank);
       
-      // Resolve GitHub URL - use issue URL if present, otherwise build from repo info
+      
       let githubUrl = (issue.github_url && issue.github_url.length > 0) ? issue.github_url : '';
 
       if (!githubUrl && window.currentRepoInfo) {
@@ -824,10 +786,10 @@ function displayAnalysisResults(results, summary) {
 
       console.log(`[Issue Link] ${issue["Class name"]}.${issue["Function name"]} -> ${githubUrl}`);
 
-      // Extract issue type (with fallback parsing from rationale if not present)
+      
       const issueType = issue.issue_type || extractIssueTypeFromRationale(issue.rationale, issue.refactoring_type);
 
-      // Create clickable class.method name — navigation target (line) is embedded in githubUrl hash by backend AST
+      
       const classMethodText = `${issue["Class name"]}.${issue["Function name"]}`;
       const linkId = `issue-link-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       const clickableTitle = githubUrl
@@ -858,7 +820,7 @@ function displayAnalysisResults(results, summary) {
         </div>
       `);
       
-      // Attach click handler after DOM insertion
+      
       if (githubUrl) {
         setTimeout(() => {
           const link = document.getElementById(linkId);
@@ -875,15 +837,15 @@ function displayAnalysisResults(results, summary) {
     });
   });
   
-  // Update tab with count
+  
   $('.tab[data-tab="issues"]').html(`Issues <span class="badge">${totalIssues}</span>`);
   
-  // Auto-switch to issues tab
+  
   $('.tab[data-tab="issues"]').click();
 }
 
 function updateTreeWithIssues(results) {
-  // Add issue counts to file tree
+  
   results.forEach(fileResult => {
     const issueCount = fileResult.issues?.length || 0;
     if (issueCount > 0) {
@@ -909,34 +871,26 @@ function getSeverityLabel(rank) {
 
 function showFileDetails(fileData) {
   console.log('[CleanCodeAgent] File selected:', fileData);
-  // TODO: Show file details in a panel
+  
 }
 
-// ============================================
-// ISSUE TYPE EXTRACTION HELPER
-// ============================================
-
-/**
- * Extract issue type from rationale text and refactoring_type (fallback if issue_type field missing)
- * This mirrors the logic in tasks.yaml ranking_task
- */
 function extractIssueTypeFromRationale(rationale, refactoringType) {
   if (!rationale) return 'Unknown';
   
   const rationaleLC = rationale.toLowerCase();
   const refactoringLC = (refactoringType || '').toLowerCase();
   
-  // Priority order (first match wins) - mirrors tasks.yaml ranking_task
   
-  // 1. God Class
+  
+  
   if (rationaleLC.includes('god class')) return 'God Class';
   if (refactoringLC === 'extract class' && !rationaleLC.includes('feature envy')) return 'God Class';
   
-  // 2. Feature Envy
+  
   if (rationaleLC.includes('feature envy')) return 'Feature Envy';
   if (refactoringLC === 'move method') return 'Feature Envy';
   
-  // 3. Complexity (includes inline variable, inline method, parameterize variable, extract method)
+  
   if (refactoringLC === 'inline variable' || 
       refactoringLC === 'inline method' || 
       refactoringLC === 'parameterize variable' ||
@@ -951,23 +905,19 @@ function extractIssueTypeFromRationale(rationale, refactoringType) {
       rationaleLC.includes('trivial') || 
       rationaleLC.includes('single-use')) return 'Complexity';
   
-  // 4. Modularity
+  
   if (rationaleLC.includes('modularity') || 
       rationaleLC.includes('separation of concerns')) return 'Modularity';
   
-  // 5. Information Hiding
+  
   if (rationaleLC.includes('information hiding') || 
       rationaleLC.includes('public field') || 
       rationaleLC.includes('encapsulation')) return 'Information Hiding';
   
-  // Default to Unknown if no match
+  
   console.warn('[Issue Type] Could not determine issue type:', { rationale, refactoringType });
   return 'Unknown';
 }
-
-// ============================================
-// USER FEEDBACK
-// ============================================
 
 function submitFeedback(email, comment) {
   const btn = $('#feedback-submit-btn');
@@ -1001,10 +951,6 @@ function submitFeedback(email, comment) {
     });
 }
 
-// ============================================
-// PDF REPORT GENERATION
-// ============================================
-
 function downloadAnalysisReport() {
   if (!window.analysisResults) {
     alert('No analysis results available. Please run an analysis first.');
@@ -1014,7 +960,7 @@ function downloadAnalysisReport() {
   const data = window.analysisResults;
   const timestamp = new Date(data.timestamp).toLocaleString();
   
-  // Generate HTML report
+  
   const reportHTML = `
 <!DOCTYPE html>
 <html>
@@ -1207,7 +1153,7 @@ function downloadAnalysisReport() {
 </html>
   `;
   
-  // Download as HTML file
+  
   const blob = new Blob([reportHTML], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -1220,7 +1166,7 @@ function downloadAnalysisReport() {
   
   console.log('[CleanCodeAgent] Report downloaded successfully');
   
-  // Show success message
+  
   alert('✅ Report downloaded! Open the HTML file and use your browser\'s "Print to PDF" feature to save as PDF.');
 }
 
@@ -1236,7 +1182,7 @@ function generateFileReports(results) {
     if (issues.length === 0) {
       html += `<div class="file-status">✅ No issues found - Code is clean!</div>`;
     } else {
-      // Sort by rank
+      
       issues.sort((a, b) => (a.rank || 0) - (b.rank || 0));
       
       issues.forEach(issue => {
@@ -1282,15 +1228,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ============================================
-// NAVIGATION HELPERS
-// ============================================
-
-/**
- * Navigate to a specific location in a GitHub file.
- * Same file  → scroll + highlight new line (no reload).
- * Other file → save results to sessionStorage, then navigate.
- */
 function navigateToCode(githubUrl) {
   let targetUrl;
   try {
@@ -1302,7 +1239,7 @@ function navigateToCode(githubUrl) {
 
   const isOnSameFile = window.location.pathname === targetUrl.pathname;
 
-  // Extract line number from URL hash, e.g. #L42 or #L42-L45
+  
   const hashMatch = targetUrl.hash.match(/L(\d+)/);
   const lineNumber = hashMatch ? parseInt(hashMatch[1]) : null;
 
@@ -1311,18 +1248,18 @@ function navigateToCode(githubUrl) {
   if (isOnSameFile) {
     if (lineNumber) {
       console.log(`[Navigation] Same file - updating hash to #L${lineNumber}`);
-      // Clear old highlights BEFORE changing hash
+      
       clearCurrentHighlight();
-      // Update URL hash
+      
       window.history.replaceState(null, '', `#L${lineNumber}`);
-      // GitHub will re-apply .highlighted class, so clear it again and apply ours
+      
       setTimeout(() => {
-        clearCurrentHighlight(); // Clear GitHub's auto-highlight from the new hash
+        clearCurrentHighlight(); 
         scrollToLineNumber(lineNumber);
       }, 300);
     }
   } else {
-    // Save analysis results so the new page can restore them without re-analysing
+    
     if (window.analysisResults) {
       try {
         sessionStorage.setItem('cleancode_restore', JSON.stringify(window.analysisResults));
@@ -1334,16 +1271,12 @@ function navigateToCode(githubUrl) {
   }
 }
 
-// Track the currently highlighted line number (not DOM reference, as GitHub may re-render)
 let currentHighlightedLine = null;
 
-/**
- * Clear the currently highlighted line by searching for it dynamically
- */
 function clearCurrentHighlight() {
   console.log(`[Highlight] Clearing highlights (tracked: ${currentHighlightedLine || 'none'})`);
   
-  // 1. Remove our custom highlight class
+  
   const cleanCodeHighlights = document.querySelectorAll('.cleancode-highlight');
   cleanCodeHighlights.forEach(el => {
     el.classList.remove('cleancode-highlight');
@@ -1351,7 +1284,7 @@ function clearCurrentHighlight() {
     el.style.removeProperty('display');
     el.style.removeProperty('width');
     
-    // If it's a TR, also clear TD backgrounds
+    
     if (el.tagName === 'TR') {
       el.querySelectorAll('td').forEach(td => {
         td.style.removeProperty('background-color');
@@ -1359,7 +1292,7 @@ function clearCurrentHighlight() {
     }
   });
   
-  // 2. Remove GitHub's native .highlighted class (from URL hash navigation)
+  
   const githubHighlights = document.querySelectorAll('.highlighted');
   githubHighlights.forEach(el => {
     el.classList.remove('highlighted');
@@ -1373,19 +1306,15 @@ function clearCurrentHighlight() {
   currentHighlightedLine = null;
 }
 
-/**
- * Scroll to a specific line number on the current GitHub file page
- * and apply a yellow highlight. Call clearCurrentHighlight() before this.
- */
 function scrollToLineNumber(lineNumber) {
   console.log(`[Highlight] Scrolling to line ${lineNumber}`);
 
-  // GitHub's new structure uses <div id="LC{n}"> instead of table rows
+  
   const lineElement = document.getElementById(`LC${lineNumber}`);
 
   if (!lineElement) {
     console.error(`[Highlight] Could not find element LC${lineNumber}`);
-    // Try fallback with anchor
+    
     const anchor = document.querySelector(`a[name="L${lineNumber}"]`);
     if (anchor) {
       anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1396,33 +1325,33 @@ function scrollToLineNumber(lineNumber) {
 
   console.log(`[Highlight] Found LC${lineNumber}, tag: ${lineElement.tagName}`);
 
-  // Scroll to line
+  
   lineElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
   console.log(`[Highlight] Scrolled to line ${lineNumber}`);
 
-  // For GitHub's new DIV structure, highlight just the LC element itself
-  // (parent DIVs are too large and cover multiple lines)
+  
+  
   let highlightTarget = null;
 
-  // Strategy 1: If it's a TR (old table layout), use the TR
+  
   const trParent = lineElement.closest('tr');
   if (trParent) {
     highlightTarget = trParent;
     console.log(`[Highlight] Using TR parent for highlighting`);
     
-    // Apply highlight
+    
     highlightTarget.classList.add('cleancode-highlight');
     highlightTarget.style.setProperty('background-color', 'rgba(255, 212, 59, 0.4)', 'important');
     highlightTarget.querySelectorAll('td').forEach(td => {
       td.style.setProperty('background-color', 'rgba(255, 212, 59, 0.4)', 'important');
     });
   } 
-  // Strategy 2: DIV structure - highlight just the LC element itself
+  
   else {
     highlightTarget = lineElement;
     console.log(`[Highlight] Highlighting LC element directly (DIV structure)`);
     
-    // Apply highlight with strong specificity
+    
     highlightTarget.classList.add('cleancode-highlight');
     highlightTarget.style.setProperty('background-color', 'rgba(255, 212, 59, 0.4)', 'important');
     highlightTarget.style.setProperty('display', 'block', 'important');
@@ -1434,7 +1363,7 @@ function scrollToLineNumber(lineNumber) {
     return;
   }
   
-  // Store line number for cleanup
+  
   currentHighlightedLine = lineNumber;
   console.log(`[Highlight] Successfully highlighted line ${lineNumber}`);
 }

@@ -1,20 +1,15 @@
-/**
- * GitHub Adapter - GitHub API integration and repository parsing
- * Based on Octotree's adapter pattern
- */
-
 class GitHubAdapter {
   constructor() {
     this.apiUrl = 'https://api.github.com';
-    this.token = null; // GitHub personal access token (optional)
+    this.token = null; 
     this._defaultBranch = {};
   }
 
-  /**
-   * Get repository info from current GitHub page URL
-   */
+  
+
+
   async getRepoInfo() {
-    // Parse URL: https://github.com/username/reponame/...
+    
     const match = window.location.pathname.match(/([^\/]+)\/([^\/]+)(?:\/([^\/]+))?(?:\/([^\/]+))?/);
     
     if (!match) {
@@ -23,10 +18,10 @@ class GitHubAdapter {
 
     const username = match[1];
     const reponame = match[2];
-    const type = match[3]; // blob, tree, commit, etc.
+    const type = match[3]; 
     const typeId = match[4];
 
-    // Get branch name
+    
     let branch = await this.detectBranch(username, reponame, type, typeId);
 
     return {
@@ -38,11 +33,11 @@ class GitHubAdapter {
     };
   }
 
-  /**
-   * Detect current branch from DOM or API
-   */
+  
+
+
   async detectBranch(username, reponame, type, typeId) {
-    // Try to get from branch selector in DOM
+    
     const branchDropdown = $('.branch-select-menu summary');
     const branchInTitle = branchDropdown.attr('title');
     const branchInSpan = branchDropdown.find('span').text();
@@ -56,7 +51,7 @@ class GitHubAdapter {
       return branchFromDOM;
     }
 
-    // Fallback: get default branch from API
+    
     if (this._defaultBranch[`${username}/${reponame}`]) {
       return this._defaultBranch[`${username}/${reponame}`];
     }
@@ -68,13 +63,13 @@ class GitHubAdapter {
       return defaultBranch;
     } catch (e) {
       console.error('Failed to get default branch:', e);
-      return 'main'; // Ultimate fallback
+      return 'main'; 
     }
   }
 
-  /**
-   * Load complete file tree from repository
-   */
+  
+
+
   async loadFileTree(repoInfo) {
     console.log('[GitHubAdapter] Loading file tree...');
     
@@ -82,7 +77,7 @@ class GitHubAdapter {
     const encodedBranch = encodeURIComponent(branch);
 
     try {
-      // Get tree recursively
+      
       const tree = await this._apiGet(
         `/repos/${username}/${reponame}/git/trees/${encodedBranch}?recursive=1`
       );
@@ -92,10 +87,10 @@ class GitHubAdapter {
         return await this._loadTreeNonRecursive(repoInfo);
       }
 
-      // Transform tree items
+      
       const items = tree.tree.map(item => this._transformTreeItem(item, repoInfo));
       
-      // Build hierarchical structure
+      
       return this._buildHierarchy(items);
 
     } catch (error) {
@@ -104,9 +99,9 @@ class GitHubAdapter {
     }
   }
 
-  /**
-   * Load tree non-recursively (for large repos)
-   */
+  
+
+
   async _loadTreeNonRecursive(repoInfo, path = '') {
     const { username, reponame, branch } = repoInfo;
     const encodedBranch = encodeURIComponent(branch);
@@ -123,7 +118,7 @@ class GitHubAdapter {
       const transformed = this._transformTreeItem(item, repoInfo, fullPath);
       items.push(transformed);
 
-      // Recursively load subdirectories
+      
       if (item.type === 'tree') {
         const children = await this._loadTreeNonRecursive(repoInfo, fullPath);
         transformed.children = children;
@@ -133,13 +128,13 @@ class GitHubAdapter {
     return items;
   }
 
-  /**
-   * Transform API tree item to our format
-   */
+  
+
+
   _transformTreeItem(item, repoInfo, fullPath = null) {
     const path = fullPath || item.path;
     const name = path.split('/').pop();
-    const type = item.type; // 'blob' (file) or 'tree' (folder)
+    const type = item.type; 
 
     return {
       path: path,
@@ -148,19 +143,19 @@ class GitHubAdapter {
       sha: item.sha,
       size: item.size,
       url: this._getItemUrl(repoInfo, type, path),
-      issueCount: 0, // Will be updated by analysis
+      issueCount: 0, 
       severity: 'none'
     };
   }
 
-  /**
-   * Build hierarchical tree structure
-   */
+  
+
+
   _buildHierarchy(items) {
     const root = [];
     const folders = { '': root };
 
-    // Sort items by path depth
+    
     items.sort((a, b) => {
       const depthA = a.path.split('/').length;
       const depthB = b.path.split('/').length;
@@ -171,15 +166,15 @@ class GitHubAdapter {
       const parts = item.path.split('/');
       const parentPath = parts.slice(0, -1).join('/');
       
-      // Get or create parent folder
+      
       if (!folders[parentPath]) {
         folders[parentPath] = [];
       }
 
-      // Add item to parent
+      
       folders[parentPath].push(item);
 
-      // If this is a folder, create children array
+      
       if (item.type === 'tree') {
         item.children = [];
         folders[item.path] = item.children;
@@ -189,9 +184,9 @@ class GitHubAdapter {
     return root;
   }
 
-  /**
-   * Get GitHub URL for an item
-   */
+  
+
+
   _getItemUrl(repoInfo, type, path) {
     const { username, reponame, branch } = repoInfo;
     const encodedBranch = encodeURIComponent(branch);
@@ -200,9 +195,9 @@ class GitHubAdapter {
     return `https://github.com/${username}/${reponame}/${type}/${encodedBranch}/${encodedPath}`;
   }
 
-  /**
-   * Fetch file content
-   */
+  
+
+
   async getFileContent(repoInfo, filePath) {
     const { username, reponame, branch } = repoInfo;
     
@@ -211,7 +206,7 @@ class GitHubAdapter {
         `/repos/${username}/${reponame}/contents/${filePath}?ref=${branch}`
       );
 
-      // Decode base64 content
+      
       return atob(data.content.replace(/\n/g, ''));
     } catch (error) {
       console.error(`[GitHubAdapter] Failed to fetch ${filePath}:`, error);
@@ -219,16 +214,16 @@ class GitHubAdapter {
     }
   }
 
-  /**
-   * Generic GitHub API GET request
-   */
+  
+
+
   async _apiGet(path) {
     const url = `${this.apiUrl}${path}`;
     const headers = {
       'Accept': 'application/vnd.github.v3+json'
     };
 
-    // Add token if available
+    
     if (this.token) {
       headers['Authorization'] = `token ${this.token}`;
     }
@@ -242,9 +237,9 @@ class GitHubAdapter {
     return await response.json();
   }
 
-  /**
-   * Error handler with helpful messages
-   */
+  
+
+
   async _handleError(response) {
     let errorMsg = 'GitHub API Error';
     let detailMsg = '';
@@ -274,17 +269,17 @@ class GitHubAdapter {
     throw new Error(`${errorMsg}: ${detailMsg}`);
   }
 
-  /**
-   * Set GitHub personal access token
-   */
+  
+
+
   setToken(token) {
     this.token = token;
     console.log('[GitHubAdapter] Token set');
   }
 
-  /**
-   * Get token from Chrome storage
-   */
+  
+
+
   async loadToken() {
     return new Promise((resolve) => {
       chrome.storage.sync.get(['githubToken'], (result) => {

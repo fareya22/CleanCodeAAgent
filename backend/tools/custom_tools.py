@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 import re
 
 class CodeAnalysisInput(BaseModel):
-    """Input for the tools that analyze Java source code."""
     source_code: str = Field(..., description="The Java source code to analyze.")
 
 class CountMethods(BaseTool):
@@ -25,11 +24,9 @@ class CountMethods(BaseTool):
             tree = javalang.parse.parse(source_code)
             print("Debug: Successfully parsed the Java source code.")
 
-           
             method_count = 0
             for type_decl in tree.types:
                 print(f"Debug: Processing type declaration: {type_decl.name if hasattr(type_decl, 'name') else 'Unknown'}")
-                
                 
                 if hasattr(type_decl, 'methods'):
                     method_count += len(type_decl.methods)
@@ -48,52 +45,40 @@ class VariableUsage(BaseTool):
 
     def _run(self, source_code: str) -> str:
         try:
-            # Remove comments and import statements
             source_code_clean = re.sub(r"//.*?$|/\*.*?\*/|^\s*import\s+.*?;", "", source_code, flags=re.DOTALL | re.MULTILINE)
 
-            # Parse the Java source code into an AST
             tree = javalang.parse.parse(source_code_clean)
 
-            # Prepare a data structure to hold the counts
             variable_usage = {
                 "global": 0,
                 "methods": {},
                 "inline_variable_candidates": []
             }
 
-            # Go through top-level type declarations
             for type_decl in tree.types:
-                # Accumulate fields declared at the class/enum/interface level
                 if hasattr(type_decl, 'fields'):
                     for field_decl in type_decl.fields:
                         variable_usage["global"] += len(field_decl.declarators)
 
-                # Look at each method and filter for LocalVariableDeclarations
                 if hasattr(type_decl, 'methods'):
                     for method in type_decl.methods:
                         method_name = method.name
                         method_var_count = 0
 
-                        # javalang allows us to filter nodes in the AST of this method
                         for _, node in method.filter(javalang.tree.LocalVariableDeclaration):
                             method_var_count += len(node.declarators)
 
                         variable_usage["methods"][method_name] = method_var_count
             
-            # Detect inline variable candidates using regex pattern matching
-            # Pattern: variable declaration followed by single use on next line
             lines = source_code.split('\n')
             for i in range(len(lines) - 1):
                 line = lines[i].strip()
                 next_line = lines[i + 1].strip()
                 
-                # Match variable declarations: Type varName = value;
                 var_decl_match = re.match(r'^\s*([\w<>]+)\s+(\w+)\s*=\s*(.+?);', line)
                 if var_decl_match:
                     var_name = var_decl_match.group(2)
-                    # Check if variable is used exactly once on the next line
                     if var_name in next_line and next_line.count(var_name) == 1:
-                        # Make sure it's not another declaration
                         if not re.match(r'^\s*[\w<>]+\s+' + var_name, next_line):
                             variable_usage["inline_variable_candidates"].append({
                                 "variable": var_name,
@@ -132,27 +117,19 @@ class FanInFanOutAnalysis(BaseTool):
                 flags=re.DOTALL | re.MULTILINE
             )
 
-            
             tree = javalang.parse.parse(source_code)
 
-           
             method_calls = {}
 
-           
             for type_decl in tree.types:
-                # If it's something that can contain methods
                 if hasattr(type_decl, 'methods'):
                     for method in type_decl.methods:
-                        # Build a unique key, e.g. "MyClass.myMethod"
                         class_and_method = f"{type_decl.name}.{method.name}"
                         method_calls[class_and_method] = set()
 
-                        # For each method invocation inside, record the called method name
                         for _, node in method.filter(javalang.tree.MethodInvocation):
-                            # 'node.member' is the method name being called
                             method_calls[class_and_method].add(node.member)
 
-            # Prepare a structure to hold the final fan-in/fan-out per method
             fan_metrics = {}
             for method_key in method_calls.keys():
                 fan_metrics[method_key] = {
@@ -160,16 +137,11 @@ class FanInFanOutAnalysis(BaseTool):
                     "fanOut": 0
                 }
 
-            # 1) Compute the fan-out = size of the distinct calls
             for method_key, calls in method_calls.items():
                 fan_metrics[method_key]["fanOut"] = len(calls)
 
-            # 2) Compute the fan-in by inverting the calls:
-            #    for each method that calls X, increment X's fan-in
             for caller, called_methods in method_calls.items():
                 for called_m in called_methods:
-                    # Find all possible methods that end with ".<called_m>"
-                    # (Naive approach: if there's exactly 1 match, that’s our target.)
                     possible_targets = [
                         k for k in method_calls.keys() 
                         if k.endswith("." + called_m)
@@ -178,7 +150,6 @@ class FanInFanOutAnalysis(BaseTool):
                         callee_key = possible_targets[0]
                         fan_metrics[callee_key]["fanIn"] += 1
 
-            # Format a human-readable summary
             lines = ["Fan-In / Fan-Out Analysis:"]
             for m_key, data in fan_metrics.items():
                 lines.append(
@@ -190,7 +161,6 @@ class FanInFanOutAnalysis(BaseTool):
         except Exception as e:
             return f"Error processing Java source code: {e}"
         
-
 class ClassCouplingAnalysis(BaseTool):
     name: str = "ClassCouplingAnalysis"
     description: str = (
@@ -202,7 +172,6 @@ class ClassCouplingAnalysis(BaseTool):
 
     def _run(self, source_code: str) -> str:
         try:
-            # Remove comments and imports for simpler parsing
             source_code = re.sub(
                 r"//.*?$|/\*.*?\*/|^\s*import\s+.*?;",
                 "",
@@ -212,24 +181,19 @@ class ClassCouplingAnalysis(BaseTool):
 
             tree = javalang.parse.parse(source_code)
 
-            # Dictionary of the form: { "ClassName": set([ReferencedClassName1, ...]) }
             class_references = {}
 
-            # Process each top-level type (class, interface, enum)
             for type_decl in tree.types:
-                # We only care about declarations that have a .name attribute (e.g., classes, interfaces)
                 if not hasattr(type_decl, 'name'):
                     continue
 
                 current_class_name = type_decl.name
                 class_references[current_class_name] = set()
 
-                # Traverse the AST nodes within this type declaration and look for type references
                 for _, node in type_decl.filter(javalang.tree.Type):
                     if node.name and (node.name != current_class_name):
                         class_references[current_class_name].add(node.name)
 
-            # Format a readable summary
             lines = ["Class Coupling Analysis:"]
             for class_name, references in class_references.items():
                 coupling_count = len(references)

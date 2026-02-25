@@ -5,9 +5,9 @@ planning_agent:
     Create a systematic analysis plan that defines clear criteria for each design issue:
     
     1. Design Issue Identification: Define specific characteristics for each issue type
-       - "god class": >5 BUSINESS LOGIC methods (exclude getters/setters) OR >20 fields OR methods using different subsystems. IMPORTANT: Skip model/DTO classes (classes with ONLY getters/setters and no business logic)
-       - "feature envy": Method accessing 4+ fields from another class
-       - "complexity": Cyclomatic complexity >5 OR nesting depth >3
+       - "god class": >3 BUSINESS LOGIC methods (exclude getters/setters) OR >10 fields OR methods using different subsystems. IMPORTANT: Skip model/DTO classes (classes with ONLY getters/setters and no business logic)
+       - "feature envy": Method accessing 2+ fields from another class
+       - "complexity": Cyclomatic complexity >3 OR nesting depth >2
        - "modularity": Classes with >3 cross-class dependencies
        - "information hiding": Public fields (actual public instance fields, not public methods) OR complex parameter lists
     
@@ -24,9 +24,9 @@ design_issue_identification_agent:
   goal: >
     Analyze the provided code and identify specific design issues. Only consider these exact types:
 
-    1. "god class": A class with >5 BUSINESS LOGIC methods (excluding getters/setters) with multiple unrelated responsibilities. Do NOT flag model/DTO classes that only have getters/setters. Suggest: "extract class"
-    2. "feature envy": A method using 4+ fields from ANOTHER class's data. Suggest: "move method" (to that class) or "extract class"
-    3. "complexity": A method/class with HIGH cyclomatic complexity (>5), deep nesting (>3 levels), OR single-use variables that exist only to be passed immediately to the next line ("inline variable" candidates), OR trivial one-liner methods called only once ("inline method" candidates). Suggest: "extract method", "inline variable", or "inline method"
+    1. "god class": A class with >3 BUSINESS LOGIC methods (excluding getters/setters) with multiple unrelated responsibilities. Do NOT flag model/DTO classes that only have getters/setters. Suggest: "extract class"
+    2. "feature envy": A method using 2+ fields from ANOTHER class's data. Suggest: "move method" (to that class) or "extract class"
+    3. "complexity": A method/class with HIGH cyclomatic complexity (>3), deep nesting (>2 levels), OR single-use variables that exist only to be passed immediately to the next line ("inline variable" candidates), OR trivial one-liner methods called only once ("inline method" candidates). Suggest: "extract method", "inline variable", or "inline method"
     4. "modularity": Poor separation of concerns or tight coupling between >3 classes. Suggest: "extract class" or "move method"
     5. "information hiding": (a) A class that exposes actual public instance fields instead of using private+getters/setters. (b) A method that directly reads or writes public fields of ANOTHER object (e.g. obj.field = value) instead of calling a method on it. Suggest: "extract class" or "parameterize variable"
 
@@ -51,8 +51,8 @@ code_analyzer_agent:
     Perform targeted metric analysis based on the identified design issue types. Focus on:
     
     For "god class": Count BUSINESS LOGIC methods ONLY (exclude getters/setters by filtering out methods matching pattern: get*, set*, is*). Measure class complexity, analyze method cohesion. SKIP this check if class only contains getters/setters (model/DTO class)
-    For "feature envy": Track method cross-class field accesses (4+ fields from another class indicate envy), measure fan-out dependencies
-    For "complexity": Calculate cyclomatic complexity, measure nesting depth, identify long methods (>25 lines), **COUNT INLINE VARIABLE CANDIDATES** (variables assigned once and used once on next line), identify trivial one-liner methods called once
+    For "feature envy": Track method cross-class field accesses (2+ fields from another class indicate envy), measure fan-out dependencies
+    For "complexity": Calculate cyclomatic complexity, measure nesting depth, identify long methods (>20 lines), **COUNT INLINE VARIABLE CANDIDATES** (variables assigned once and used once on next line), identify trivial one-liner methods called once
     For "modularity": Analyze coupling metrics, class dependency depth, method call chains
     For "information hiding": Identify ACTUAL PUBLIC FIELDS (not public methods), parameter complexity, exposed internal logic
     
@@ -62,7 +62,7 @@ code_analyzer_agent:
     
     IMPORTANT DISTINCTIONS:
     - Model/DTO classes (only getters/setters): Do NOT flag as God Class even if method count is high
-    - Business logic classes: Flag God Class only if BUSINESS LOGIC methods > 5 (excluding getters/setters)
+    - Business logic classes: Flag God Class only if BUSINESS LOGIC methods > 3 (excluding getters/setters)
     - Public fields: Only count actual public instance fields, not public methods
   backstory: >
     With expertise in code architecture and metric-based analysis, you deeply examine code dependencies and structural properties. You correctly distinguish between model classes and business classes, ensuring that normal encapsulation patterns (getters/setters) are not mis-flagged as design issues. Your report explicitly connects measurable code characteristics with each identified issue type.

@@ -1,6 +1,3 @@
-"""
-Batch analyzer for analyzing multiple files from a repository
-"""
 import os
 import json
 import time
@@ -15,13 +12,7 @@ except ModuleNotFoundError:
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import traceback
 
-
 def _compute_metrics(code_content: str) -> str:
-    """
-    Run all static analysis tools ONCE in Python and return a compact summary string.
-    This avoids the ReAct tool-call loop that caused Haiku to return empty responses
-    (agents were calling tools 9 times, re-sending the full source code each time).
-    """
     parts = []
     try:
         parts.append(CountMethods()._run(code_content))
@@ -41,22 +32,9 @@ def _compute_metrics(code_content: str) -> str:
         parts.append(f"ClassCouplingAnalysis error: {e}")
     return "\n".join(parts)
 
-
 class BatchAnalyzer:
-    """Analyze multiple Java files from a repository"""
     
     def __init__(self, max_workers=1, delay_between_files=2, max_retries=3, retry_backoff=2, repo_info=None, enable_consistency_check=False):
-        """
-        Initialize batch analyzer
-
-        Args:
-            max_workers: Maximum number of parallel analysis workers (default 1 to avoid rate limits)
-            delay_between_files: Seconds to wait between file analyses (reduced from 5 to 2)
-            max_retries: Maximum number of retries for failed LLM calls (reduced from 5 to 3)
-            retry_backoff: Backoff multiplier for retry delays (reduced from 3 to 2; total wait: 1+2=3s)
-            repo_info: Optional dict with 'owner', 'repo', 'branch' for GitHub URL generation (default None)
-            enable_consistency_check: If True, run analysis twice and compare results to detect inconsistency
-        """
         self.max_workers = max_workers
         self.delay_between_files = delay_between_files
         self.max_retries = max_retries
@@ -67,16 +45,6 @@ class BatchAnalyzer:
         self.enable_consistency_check = enable_consistency_check
     
     def analyze_repository(self, files: List[Dict[str, str]], repo_name: str = "unknown") -> List[Dict[str, Any]]:
-        """
-        Analyze all files in a repository
-        
-        Args:
-            files: List of dicts with 'path' and 'content' keys
-            repo_name: Repository name for logging
-        
-        Returns:
-            List of analysis results for each file
-        """
         print(f"\n{'='*70}")
         print(f"📦 BATCH ANALYSIS: {repo_name}")
         print(f"📄 Total files: {len(files)}")
@@ -87,7 +55,6 @@ class BatchAnalyzer:
         
         results = []
         
-        # Filter only Java files for now
         java_files = [f for f in files if f['path'].endswith('.java')]
         
         print(f"☕ Java files to analyze: {len(java_files)}")
@@ -96,7 +63,6 @@ class BatchAnalyzer:
             print("⚠️  No Java files found in repository")
             return []
         
-        # Analyze each file with delays to avoid rate limiting
         for idx, file_info in enumerate(java_files, 1):
             file_path = file_info['path']
             code_content = file_info['content']
@@ -104,7 +70,6 @@ class BatchAnalyzer:
             print(f"\n[{idx}/{len(java_files)}] 🔍 Analyzing: {file_path}")
             print(f"    📏 Size: {len(code_content)} characters")
             
-            # Add delay between files to avoid AWS rate limiting
             if idx > 1:
                 print(f"     Waiting {self.delay_between_files}s to avoid rate limits...")
                 time.sleep(self.delay_between_files)
@@ -112,7 +77,6 @@ class BatchAnalyzer:
             try:
                 issues = self.analyze_single_file(code_content, file_path)
                 
-                # Add GitHub URLs to issues if repo_info is provided
                 if self.repo_info:
                     for issue in issues:
                         if 'line' in issue:
@@ -130,12 +94,10 @@ class BatchAnalyzer:
                 error_msg = str(e)
                 print(f"    ❌ Error: {error_msg}")
                 
-                # Try fallback heuristic analysis as last resort
                 print(f"    🔄 Attempting fallback heuristic analysis...")
                 try:
                     fallback_issues = self._create_basic_issues(code_content, file_path)
                     
-                    # Add GitHub URLs to fallback issues if repo_info is provided
                     if self.repo_info:
                         for issue in fallback_issues:
                             if 'line' in issue:
@@ -158,51 +120,28 @@ class BatchAnalyzer:
                         "fallback_error": str(fb_error)
                     })
         
-        # Summary
         total_issues = sum(len(r.get('issues', [])) for r in results)
         successful = len([r for r in results if r['status'] == 'success'])
-        
-        # print(f"\n{'='*70}")
-        # print(f" ANALYSIS SUMMARY")
-        # print(f"{'='*70}")
-        # print(f" Successful: {successful}/{len(java_files)}")
-        # print(f" Total issues found: {total_issues}")
-        # print(f" Cache size: {len(self.analysis_cache)} entries")
-        # print(f"{'='*70}\n")
         
         return results
     
     def analyze_single_file(self, code_content: str, file_path: str = "unknown.java") -> List[Dict[str, Any]]:
-        """
-        Analyze a single file using CrewAI agents with retry logic
-        
-        Args:
-            code_content: Java source code
-            file_path: File path for reference
-        
-        Returns:
-            List of issues with rankings
-        """
-        # Check cache first
         cache_key = hash(code_content)
         if cache_key in self.analysis_cache:
             print(f"    💾 Using cached results for {file_path}")
             return self.analysis_cache[cache_key]
         
-        # Consistency check: run analysis twice and compare if enabled
         if self.enable_consistency_check:
             print(f"    🔬 CONSISTENCY CHECK ENABLED - Running analysis twice...")
             first_result = self._run_single_analysis(code_content, file_path, cache_key, check_mode=True)
-            time.sleep(2)  # Small delay between runs
+            time.sleep(2)
             second_result = self._run_single_analysis(code_content, file_path, cache_key, check_mode=True)
             
-            # Compare results
             if len(first_result) != len(second_result):
                 print(f"    ⚠️  INCONSISTENCY DETECTED: Run 1 found {len(first_result)} issues, Run 2 found {len(second_result)} issues")
             else:
                 print(f"    ✅ CONSISTENCY CHECK PASSED: Both runs found {len(first_result)} issues")
             
-            # Use the run with more issues (safer choice)
             result = first_result if len(first_result) >= len(second_result) else second_result
             self.analysis_cache[cache_key] = result
             return result
@@ -210,18 +149,6 @@ class BatchAnalyzer:
             return self._run_single_analysis(code_content, file_path, cache_key, check_mode=False)
     
     def _run_single_analysis(self, code_content: str, file_path: str, cache_key: int, check_mode: bool = False) -> List[Dict[str, Any]]:
-        """
-        Internal method to run a single analysis attempt with retry logic
-        
-        Args:
-            code_content: Java source code
-            file_path: File path for reference
-            cache_key: Hash key for caching
-            check_mode: If True, don't cache results (used for consistency checking)
-        
-        Returns:
-            List of issues with rankings
-        """
         last_error = None
 
         _stale_files = [
@@ -238,43 +165,35 @@ class BatchAnalyzer:
                 except Exception:
                     pass
 
-        # Retry logic with exponential backoff
         for attempt in range(1, self.max_retries + 1):
             try:
                 if not check_mode:
                     print(f"    [Attempt {attempt}/{self.max_retries}] Running crew analysis...")
 
-
                 metrics_summary = _compute_metrics(code_content)
                 if not check_mode:
                     print(f"    [METRICS] Pre-computed static analysis:\n{metrics_summary[:200]}...")
 
-                # Prepare input for crew
                 inputs = {
                     "code": code_content,
                     "metrics": metrics_summary
                 }
 
-               
                 crew = LocalizeAgent().crew()
                 result = crew.kickoff(inputs=inputs)
 
-               
                 if not check_mode:
                     self._print_pipeline_summary(file_path)
 
-                
                 raw_issues = self._parse_crew_output(result, file_path)
                 if not check_mode:
                     print(f"    [FILTER] Parsed {len(raw_issues)} raw issues from LLM")
 
-             
                 if not raw_issues:
                     if not check_mode:
                         print(f"    [PARSE] LLM returned no parseable issues — running heuristic fallback...")
                     raw_issues = self._create_basic_issues(code_content, file_path)
                 
-               
                 filtered_issues = self._filter_and_validate_issues(raw_issues, code_content, file_path)
                 if not check_mode:
                     print(f"    [FILTER] After validation: {len(filtered_issues)} issues remain")
@@ -285,7 +204,6 @@ class BatchAnalyzer:
                             line_num = issue.get('line') or self._find_function_line(code_content, issue)
                             issue['github_url'] = self._generate_github_url(file_path, line_num)
 
-                
                 if not check_mode:
                     self.analysis_cache[cache_key] = filtered_issues
 
@@ -313,7 +231,6 @@ class BatchAnalyzer:
                 else:
                     break
         
-        
         print(f"    [FALLBACK] All retries exhausted. Using heuristic analysis...")
         try:
             fallback_issues = self._create_basic_issues(code_content, file_path)
@@ -331,9 +248,6 @@ class BatchAnalyzer:
             return []
     
     def _is_llm_error(self, error_msg: str) -> bool:
-        """
-        Detect if this is an LLM/connection error that warrants retry
-        """
         llm_error_keywords = [
             'llm',
             'empty',
@@ -352,11 +266,6 @@ class BatchAnalyzer:
         return any(keyword in error_lower for keyword in llm_error_keywords)
 
     def _is_rate_limit_error(self, error_msg: str) -> bool:
-        """
-        Detect rate-limit / quota-exhausted errors that need a long wait (60s)
-        rather than the standard short backoff.
-        Covers Gemini, OpenAI, Bedrock, and generic HTTP 429 patterns.
-        """
         rate_limit_keywords = [
             '429',
             'rate limit',
@@ -376,14 +285,6 @@ class BatchAnalyzer:
         return any(kw in error_lower for kw in rate_limit_keywords)
     
     def _parse_crew_output(self, result, file_path: str) -> List[Dict[str, Any]]:
-        """Parse CrewAI output to extract issues.
-
-        Priority:
-        1. result.raw  — in-memory output of the last task (ranking_task)
-        2. ranking_report.md — disk copy of ranking_task output
-        3. localization_report.md — disk copy of localization_task output
-           (ranking_task may have failed; localization output is still valid)
-        """
         try:
             
             if hasattr(result, 'raw'):
@@ -393,12 +294,10 @@ class BatchAnalyzer:
             else:
                 result_text = str(result)
 
-            
             if not result_text or result_text.strip() == '' or result_text == 'None':
                 print(f"    [PARSE] Empty response from LLM, trying file fallbacks...")
                 return self._parse_report_files()
 
-            
             try:
                 issues = json.loads(result_text) if isinstance(result_text, str) else result_text
 
@@ -418,7 +317,6 @@ class BatchAnalyzer:
                     except:
                         pass
 
-            
             print(f"    [PARSE] Falling back to report file parsing...")
             return self._parse_report_files()
 
@@ -427,11 +325,6 @@ class BatchAnalyzer:
             return self._parse_report_files()
 
     def _parse_report_files(self) -> List[Dict[str, Any]]:
-        """
-        Fallback parser: try ranking_report.md first, then localization_report.md.
-        ranking_report.md = ranking_task output (ranked issues, ideal)
-        localization_report.md = localization_task output (unranked — still useful)
-        """
         import re
 
         for report_name in ['ranking_report.md', 'localization_report.md']:
@@ -445,7 +338,6 @@ class BatchAnalyzer:
                     issues = json.loads(match.group(1))
                     if isinstance(issues, list) and len(issues) > 0:
                         print(f"    [PARSE] ✅ Loaded {len(issues)} issues from {report_name}")
-                        # Ensure every issue has a rank field
                         for i, issue in enumerate(issues, 1):
                             if 'rank' not in issue:
                                 issue['rank'] = i
@@ -458,10 +350,6 @@ class BatchAnalyzer:
         return []
 
     def _print_pipeline_summary(self, file_path: str) -> None:
-        """
-        Print a combined terminal report showing what each pipeline stage found.
-        Reads the intermediate .md files written by the crew tasks.
-        """
         import re
 
         sep = "=" * 60
@@ -469,7 +357,6 @@ class BatchAnalyzer:
         print(f"  PIPELINE SUMMARY — {file_path}")
         print(sep)
 
-       
         print("\n[STAGE 1] Design Issue Identification (issue_report.md)")
         try:
             content = Path("issue_report.md").read_text(encoding="utf-8")
@@ -486,7 +373,6 @@ class BatchAnalyzer:
         except Exception as e:
             print(f"  (not available: {e})")
 
-        
         print("\n[STAGE 2] Code Analysis (analysis_report.md)")
         try:
             content = Path("analysis_report.md").read_text(encoding="utf-8")
@@ -495,7 +381,6 @@ class BatchAnalyzer:
         except Exception as e:
             print(f"  (not available: {e})")
 
-        
         print("\n[STAGE 3] Issue Localization (localization_report.md)")
         try:
             content = Path("localization_report.md").read_text(encoding="utf-8")
@@ -516,7 +401,6 @@ class BatchAnalyzer:
         except Exception as e:
             print(f"  (not available: {e})")
 
-        
         print("\n[STAGE 4] Ranked Issues (ranking_report.md)")
         try:
             content = Path("ranking_report.md").read_text(encoding="utf-8")
@@ -544,10 +428,6 @@ class BatchAnalyzer:
         print(f"\n{sep}\n")
 
     def _infer_issue_category(self, rationale: str, refactoring_type: str) -> str:
-        """
-        Infer the design issue category from the rationale text and refactoring type.
-        Returns one of: god class, feature envy, complexity, modularity, information hiding, unknown.
-        """
         rat_lower = rationale.lower()
         ref_lower = refactoring_type.lower()
 
@@ -575,7 +455,6 @@ class BatchAnalyzer:
         return "unknown"
 
     def _create_basic_issues(self, code_content: str, file_path: str) -> List[Dict[str, Any]]:
-        """Create basic issues using heuristics when LLM fails"""
         import re
 
         issues = []
@@ -596,7 +475,7 @@ class BatchAnalyzer:
             elif in_method:
                 method_line_count += 1
                 if '}' in line:
-                    if method_line_count > 25:
+                    if method_line_count > 20:
                         issues.append({
                             "Class name": class_name,
                             "Function name": method_name,
@@ -622,7 +501,7 @@ class BatchAnalyzer:
             )
         ]
         method_count = len(business_methods)
-        if method_count > 5:
+        if method_count > 3:
             issues.append({
                 "Class name": class_name,
                 "Function name": "N/A",
@@ -633,7 +512,6 @@ class BatchAnalyzer:
                 "severity": "high",
                 "line": 1
             })
-
 
         inline_pattern = re.compile(
             r'^\s*(int|long|double|float|boolean|String)\s+(\w+)\s*=\s*.+;'
@@ -666,35 +544,38 @@ class BatchAnalyzer:
                     "line": i + 1
                 })
 
-
-        pub_field_pattern = re.compile(r'\b(\w+)\.([a-z]\w*)\s*=\s*')
+        pub_field_write_pattern = re.compile(r'\b(\w+)\.([a-z]\w*)\s*=\s*')
+        pub_field_read_pattern = re.compile(r'\b(\w+)\.([a-z]\w*)(?!\s*[\(=])')
         seen_objects: set = set()
         for i, line in enumerate(lines, 1):
-            for m in pub_field_pattern.finditer(line):
-                obj_name = m.group(1)
-                field_name = m.group(2)
-              
-                if obj_name == 'this' or obj_name in seen_objects:
-                    continue
-               
-                if obj_name[0].isupper():   
-                    continue
-                seen_objects.add(obj_name)
-                issues.append({
-                    "Class name": class_name,
-                    "Function name": "main",
-                    "Function signature": "main(String[] args)",
-                    "refactoring_type": "extract class",
-                    "rationale": (
-                        f"Direct assignment to public field '{obj_name}.{field_name}' "
-                        "bypasses encapsulation. The target class should expose a "
-                        "constructor or setter instead of public fields."
-                    ),
-                    "rank": len(issues) + 1,
-                    "severity": "medium",
-                    "line": i
-                })
-
+            stripped = line.strip()
+            if stripped.startswith('//') or stripped.startswith('*'):
+                continue
+            for pattern, access_type in [(pub_field_write_pattern, 'write'), (pub_field_read_pattern, 'read')]:
+                for m in pattern.finditer(line):
+                    obj_name = m.group(1)
+                    field_name = m.group(2)
+                    if obj_name == 'this' or obj_name in seen_objects:
+                        continue
+                    if obj_name[0].isupper():
+                        continue
+                    if len(field_name) < 2:
+                        continue
+                    seen_objects.add(obj_name)
+                    issues.append({
+                        "Class name": class_name,
+                        "Function name": "main",
+                        "Function signature": "main(String[] args)",
+                        "refactoring_type": "extract class",
+                        "rationale": (
+                            f"Information hiding violation: direct {access_type} of public field "
+                            f"'{obj_name}.{field_name}' bypasses encapsulation. "
+                            "The target class should use private fields with getters/setters."
+                        ),
+                        "rank": len(issues) + 1,
+                        "severity": "medium",
+                        "line": i
+                    })
 
         pub_field_decl_re = re.compile(
             r'^\s*public\s+(?!(?:static\s+)?(?:class|interface|enum)\b)'
@@ -731,18 +612,12 @@ class BatchAnalyzer:
         return issues
     
     def _find_function_line(self, code_content: str, issue: dict) -> int:
-        """
-        Find the EXACT line number of a function or class using AST.
-        Returns the declaration line number from javalang AST.
-        Falls back to text search only if AST fails.
-        """
         import javalang
         import re
         
         func_name = issue.get('Function name', '')
         class_name = issue.get('Class name', '')
         
-       
         if not func_name or func_name in ('N/A', ''):
             return self._find_class_line(code_content, class_name)
         
@@ -750,10 +625,8 @@ class BatchAnalyzer:
           
             clean_code = re.sub(r"//.*?$|/\*.*?\*/", "", code_content, flags=re.MULTILINE)
             
-            
             tree = javalang.parse.parse(clean_code)
             
-          
             for type_decl in tree.types:
                
                 if hasattr(type_decl, 'name') and type_decl.name == class_name:
@@ -766,23 +639,19 @@ class BatchAnalyzer:
         except Exception as e:
             print(f"         AST parse failed for {func_name}: {e}")
         
-        
         lines = code_content.split('\n')
         for i, line in enumerate(lines, 1):
             
             if func_name in line and '(' in line:
-                # Avoid matching comments or method calls
+                
                 if '//' not in line[:line.index(func_name)] and '/*' not in line[:line.index(func_name)]:
-                    # Check if this looks like a method declaration (has visibility modifier or return type before it)
+                    
                     if any(keyword in line for keyword in ['public', 'private', 'protected', 'void', 'int', 'String', 'boolean']):
                         return i
         
-        return 1  # Last resort fallback
+        return 1  
     
     def _find_class_line(self, code_content: str, class_name: str) -> int:
-        """
-        Find the EXACT line number of a class declaration using AST.
-        """
         import javalang
         import re
         
@@ -790,13 +659,11 @@ class BatchAnalyzer:
             return 1
         
         try:
-            # Clean code for parsing
+
             clean_code = re.sub(r"//.*?$|/\*.*?\*/", "", code_content, flags=re.MULTILINE)
-            
-            # Parse AST
+        
             tree = javalang.parse.parse(clean_code)
             
-            # Search for class in AST
             for type_decl in tree.types:
                 if hasattr(type_decl, 'name') and type_decl.name == class_name:
                     if hasattr(type_decl, 'position') and type_decl.position:
@@ -804,10 +671,6 @@ class BatchAnalyzer:
         except Exception as e:
             print(f"       ⚠️  AST parse failed for class {class_name}: {e}")
         
-        # Fallback: Text search for class declaration.
-        # Do NOT require a specific access modifier — the declaration may have
-        # extra modifiers between the access level and the keyword, e.g.
-        # "public final class Foo", "public abstract class Foo", "class Foo".
         lines = code_content.split('\n')
         class_pattern = re.compile(rf'\b(?:class|interface|enum)\s+{re.escape(class_name)}\b')
         for i, line in enumerate(lines, 1):
@@ -817,17 +680,6 @@ class BatchAnalyzer:
         return 1
 
     def _generate_github_url(self, file_path: str, line_number=None) -> str:
-        """
-        Generate a GitHub URL pointing to a file (and optionally a specific line).
-
-        Args:
-            file_path: File path in repository
-            line_number: Line number (optional). When None or 0, the URL points to
-                         the file without a line anchor.
-
-        Returns:
-            GitHub URL string, or empty string when repo_info is unavailable.
-        """
         if not self.repo_info:
             return ""
 
@@ -844,32 +696,26 @@ class BatchAnalyzer:
         return url
     
     def _filter_and_validate_issues(self, issues: List[Dict[str, Any]], code_content: str, file_path: str) -> List[Dict[str, Any]]:
-        """
-        Filter out false positives and validate issues
-        
-        Filters:
-        1. Skip getter/setter methods
-        2. Skip model/DTO classes with only getters/setters
-        3. Validate class names exist in code
-        4. Skip feature envy on own class fields
-        5. Skip information hiding on getter/setter methods
-        """
         import re
         
         print(f"\n    🔍 VALIDATION START for {file_path}")
         print(f"       Input issues: {len(issues)}")
         
-        # Extract actual class names from code
         actual_classes = set()
+        referenced_classes = set()
         class_pattern = r'\b(?:public\s+)?(?:class|interface|enum)\s+(\w+)'
+        word_pattern = re.compile(r'\b([A-Z][a-zA-Z0-9]+)\b')
         for line in code_content.split('\n'):
             match = re.search(class_pattern, line)
             if match:
                 actual_classes.add(match.group(1))
+            for m in word_pattern.finditer(line):
+                referenced_classes.add(m.group(1))
+
+        all_known_classes = actual_classes | referenced_classes
+
+        print(f"       Classes defined in code: {actual_classes}")
         
-        print(f"       Classes found in code: {actual_classes}")
-        
-        # Check if this is a model/DTO class (mostly getters/setters)
         is_model_class = self._is_model_class(code_content, file_path)
         if is_model_class:
             print(f"       ⚠️  Detected as Model/DTO class - will skip god class issues")
@@ -885,27 +731,16 @@ class BatchAnalyzer:
             
             skip_reason = None
             
-            # Filter 1: Skip getter/setter methods flagged for information_hiding ONLY.
-            # Do NOT filter move_method — a method like getGreeting() that starts with
-            # "get" may still be a real business-logic method that belongs elsewhere.
             if self._is_getter_setter(func_name):
                 if 'information hiding' in refactoring_type.lower() or 'information hiding' in rationale:
                     skip_reason = f"Getter/Setter with info hiding: {func_name}"
             
-            # Filter 2: Validate class name exists in code
-            if class_name and class_name not in actual_classes:
-                # Check if it's a hallucinated class (e.g., OrderLogic when only Order exists)
-                skip_reason = f"Class '{class_name}' not found in code (hallucination)"
+            if class_name and class_name not in all_known_classes:
+                skip_reason = f"Class '{class_name}' not referenced anywhere in code (hallucination)"
             
-            # Filter 3: Skip god class issues on model/DTO classes
             if is_model_class and 'god class' in rationale:
                 skip_reason = f"God class on Model/DTO class"
             
-            # Filter 4: Skip feature envy ONLY when the method accesses fields from its
-            # OWN class (which is not feature envy at all).
-            # OLD BUG: checked `class_name in rationale` — the class name always appears
-            # in any rationale, so this was silencing valid issues like OrderManager.placeOrder.
-            # FIX: only block when the rationale explicitly says the method uses its own fields.
             if 'feature envy' in refactoring_type.lower() or 'feature envy' in rationale:
                 own_field_phrases = [
                     'own field', 'its own field', 'same class', 'accesses its own',
@@ -914,7 +749,6 @@ class BatchAnalyzer:
                 if any(phrase in rationale for phrase in own_field_phrases):
                     skip_reason = "Feature envy on own class fields"
             
-            # Filter 5: Skip if rationale talks about "exposes public fields" but method is getter/setter
             if 'exposes public fields' in rationale and self._is_getter_setter(func_name):
                 skip_reason = f"Public field warning on getter/setter: {func_name}"
             
@@ -931,26 +765,11 @@ class BatchAnalyzer:
         return filtered_issues
     
     def _is_getter_setter(self, method_name: str) -> bool:
-        """
-        Check if method name is a getter or setter
-        
-        IMPORTANT: This is a conservative check. We only treat simple field accessors
-        as getters/setters, NOT business logic methods that happen to start with "get".
-        
-        Examples:
-        - getName() -> True (simple getter)
-        - setName() -> True (simple setter)
-        - isActive() -> True (boolean getter)
-        - getGreeting() -> False (generates greeting, not a simple field accessor)
-        - getCustomerStatus() -> False (computes status, not a simple field accessor)
-        """
         if not method_name or method_name == 'N/A':
             return False
         
         method_lower = method_name.lower()
         
-        # Business logic method patterns (NOT getters/setters)
-        # These methods do computation, not simple field access
         business_logic_keywords = [
             'greeting', 'status', 'report', 'calculate', 'compute', 'generate',
             'process', 'validate', 'check', 'update', 'create', 'build',
@@ -959,9 +778,8 @@ class BatchAnalyzer:
         
         for keyword in business_logic_keywords:
             if keyword in method_lower:
-                return False  # This is business logic, not a simple getter/setter
+                return False
         
-        # Standard getter/setter patterns (only if NOT business logic)
         if method_lower.startswith('get') and len(method_name) > 3:
             return True
         if method_lower.startswith('set') and len(method_name) > 3:
@@ -972,41 +790,25 @@ class BatchAnalyzer:
         return False
     
     def _is_model_class(self, code_content: str, file_path: str) -> bool:
-        """
-        Detect if this is a model/DTO/entity class
-        
-        Criteria:
-        - File path contains "model", "entity", "dto", "domain"
-        - Mostly getters/setters (80%+ of methods)
-        - Few or no business logic methods
-        """
         import re
-        
-        # Check file path
-        file_lower = file_path.lower()
-        if any(keyword in file_lower for keyword in ['model', 'entity', 'dto', 'domain', 'pojo']):
-            return True
-        
-        # Count methods
+
         lines = code_content.split('\n')
         total_methods = 0
         getter_setter_methods = 0
-        
+
         for line in lines:
-            # Match method declarations
             if re.search(r'\b(?:public|private|protected)\s+\w+\s+(\w+)\s*\(', line):
                 method_match = re.search(r'\b(?:public|private|protected)\s+\w+\s+(\w+)\s*\(', line)
                 if method_match:
                     method_name = method_match.group(1)
                     total_methods += 1
-                    
+
                     if self._is_getter_setter(method_name):
                         getter_setter_methods += 1
-        
-        # If 80%+ methods are getters/setters, it's a model class
+
         if total_methods > 0:
             ratio = getter_setter_methods / total_methods
-            if ratio >= 0.8:
+            if ratio >= 0.95:
                 return True
-        
+
         return False

@@ -4,8 +4,8 @@ planning_task:
     1. Design Issue Identification Phase:
        - Specify which code elements to analyze (classes, methods, dependencies)
        - Define criteria for identifying modularity, complexity, information hiding, god class, and feature envy issues
-       - IMPORTANT: God Class should ONLY count business logic methods (exclude getters/setters). Only flag if business logic methods > 5. Do NOT flag model/DTO classes that only have getters/setters.
-       - Feature Envy: Method using 4+ fields from ANOTHER class (not its own)
+       - IMPORTANT: God Class should ONLY count business logic methods (exclude getters/setters). Only flag if business logic methods > 3. Do NOT flag model/DTO classes that only have getters/setters.
+       - Feature Envy: Method using 2+ fields from ANOTHER class (not its own)
        - Information Hiding: (a) class exposes public instance fields, (b) method directly accesses public fields of another object
        - Complexity: includes inline variable (single-use variable) and inline method (trivial one-liner called once)
        - List specific metrics to measure (e.g., coupling, cohesion, class size, business method count excluding getters/setters)
@@ -40,10 +40,10 @@ design_issue_identification_task:
     - Process the code in a fixed, deterministic order: god class → feature envy → complexity → modularity → information hiding
 
     ISSUE TYPES AND DETECTION RULES (check ALL of these):
-    - "god class": Count ONLY business logic methods (exclude getters/setters like get*, set*, is*). Only flag if business method count > 5. Do NOT flag model/DTO classes.
-    - "feature envy": A method that uses 4+ fields from ANOTHER class's data directly.
+    - "god class": Count ONLY business logic methods (exclude getters/setters like get*, set*, is*). Only flag if business method count > 3. Do NOT flag model/DTO classes.
+    - "feature envy": A method that uses 2+ fields from ANOTHER class's data directly.
     - "complexity": ANY of the following (CHECK ALL):
-        * Cyclomatic complexity > 5 or nesting depth > 3
+        * Cyclomatic complexity > 3 or nesting depth > 2
         * **INLINE VARIABLE PATTERN**: A local variable that is:
           - Declared and assigned a value (int x = someMethod())
           - Used EXACTLY ONCE on the immediately following line (otherMethod(x))
@@ -104,8 +104,8 @@ code_analysis_task:
     {metrics}
 
     IMPORTANT GUIDELINES FOR METRIC ANALYSIS:
-    - For God Class: Count ONLY business logic methods (exclude get*, set*, is* patterns). Only report as God Class issue if business method count > 5 AND the class is not purely a model/DTO.
-    - For Feature Envy: Count cross-class field accesses (4+ fields from another class).
+    - For God Class: Count ONLY business logic methods (exclude get*, set*, is* patterns). Only report as God Class issue if business method count > 3 AND the class is not purely a model/DTO.
+    - For Feature Envy: Count cross-class field accesses (2+ fields from another class).
     - For Information Hiding: Count ACTUAL PUBLIC FIELDS (not public methods). Also count direct dot-notation field accesses on external objects.
     - **For Inline Variable**: The VariableUsage tool output shows "assigned once, used once" - count how many such variables exist. EACH one is a separate inline variable candidate.
     - For Complexity/Inline Variable: Count single-use local variables. Count trivial one-liner methods.
@@ -170,8 +170,8 @@ design_issue_localization_task:
       - Pattern to detect: variable declaration followed immediately by single use
     - For "extract class": identify which methods/fields to move to the new class
     - For "information hiding": flag both (a) classes with public instance fields AND (b) methods that access public fields of other objects via dot-notation
-    - For "feature envy": flag methods that access 4+ fields from another class
-    - For "god class": flag classes with more than 5 business logic methods (excluding getters/setters)
+    - For "feature envy": flag methods that access 2+ fields from another class
+    - For "god class": flag classes with more than 3 business logic methods (excluding getters/setters)
 
   expected_output: >
     A JSON array, output ONLY the array with no extra text:
