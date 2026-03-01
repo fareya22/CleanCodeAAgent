@@ -1,0 +1,905 @@
+/* CleanCodeAgent Sidebar Styles */
+
+/* Main Sidebar Container */
+.cleancode-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  background: #ffffff;
+  border-left: 1px solid #d0d7de;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  z-index: 9999;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+body.cleancode-show .cleancode-sidebar {
+  transform: translateX(0);
+}
+
+/* Header */
+.cleancode-header {
+  background: #24292f;
+  color: white;
+  padding: 16px;
+  border-bottom: 1px solid #30363d;
+}
+
+.cleancode-repo-info {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.cleancode-repo-info .repo-icon {
+  margin-right: 8px;
+  font-size: 16px;
+}
+
+.cleancode-branch-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.cleancode-branch-info .branch-icon {
+  margin-right: 6px;
+}
+
+.cache-clear-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: auto;
+  transition: all 0.2s;
+}
+
+.cache-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Tabs */
+.cleancode-tabs {
+  display: flex;
+  background: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.cleancode-tabs .tab {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #57606a;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+
+.cleancode-tabs .tab:hover {
+  background: #eaeef2;
+  color: #24292f;
+}
+
+.cleancode-tabs .tab.active {
+  color: #24292f;
+  border-bottom-color: #fd8c73;
+}
+
+.cleancode-tabs .tab .badge {
+  display: inline-block;
+  background: #d73a49;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  margin-left: 6px;
+}
+
+/* Content Area */
+.cleancode-content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.tab-content {
+  display: none;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Loading State */
+.cleancode-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #57606a;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f6f8fa;
+  border-top: 4px solid #24292f;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* File Tree */
+.cleancode-tree {
+  padding: 12px;
+}
+
+.jstree-default .jstree-node {
+  margin-left: 16px;
+  line-height: 28px;
+}
+
+.jstree-default .jstree-anchor {
+  color: #24292f !important;
+  font-size: 13px;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.jstree-default .jstree-anchor:hover {
+  background: #f6f8fa;
+}
+
+.jstree-default .jstree-clicked {
+  background: #ddf4ff !important;
+}
+
+.jstree-folder:before {
+  content: "📁";
+  margin-right: 6px;
+}
+
+.jstree-file:before {
+  content: "📄";
+  margin-right: 6px;
+}
+
+/* Issue Badges in Tree */
+.issue-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+.issue-badge.high {
+  background: #24292f;
+  color: white;
+}
+
+.issue-badge.medium {
+  background: #57606a;
+  color: white;
+}
+
+.issue-badge.low {
+  background: #6e7781;
+  color: white;
+}
+
+/* Issues List */
+.issues-list {
+  padding: 16px;
+}
+
+.issues-list .placeholder {
+  text-align: center;
+  color: #57606a;
+  padding: 40px 20px;
+  font-size: 14px;
+}
+
+
+.file-issues-group {
+  margin-bottom: 24px;
+}
+
+.file-header {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  background: #f6f8fa;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.file-header .file-icon {
+  margin-right: 8px;
+}
+
+.file-header .file-path {
+  flex: 1;
+  color: #24292f;
+}
+
+.file-header .issue-count-badge {
+  background: #d73a49;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+
+.issue-card {
+  border: 1px solid #d0d7de;
+  border-left: 4px solid #24292f;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: white;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.issue-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Clickable issue cards with GitHub links */
+.issue-card.clickable:hover {
+  box-shadow: 0 4px 12px rgba(9, 105, 218, 0.2);
+  transform: translateY(-2px);
+  border-left-width: 5px;
+  background: #f6fbff;
+}
+
+.issue-card.severity-high {
+  border-left-color: #24292f;
+}
+
+.issue-card.severity-medium {
+  border-left-color: #57606a;
+}
+
+.issue-card.severity-low {
+  border-left-color: #6e7781;
+}
+
+.issue-header {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* GitHub link icon */
+.github-link-icon {
+  margin-left: auto;
+  font-size: 16px;
+  text-decoration: none;
+  opacity: 0.6;
+  transition: all 0.2s;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.github-link-icon:hover {
+  opacity: 1;
+  transform: scale(1.15);
+  background: rgba(9, 105, 218, 0.1);
+}
+
+.severity-badge {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: #24292f;
+  color: white;
+}
+
+.severity-badge.severity-high {
+  background: #24292f;
+  color: white;
+}
+
+.severity-badge.severity-medium {
+  background: #57606a;
+  color: white;
+}
+
+.severity-badge.severity-low {
+  background: #6e7781;
+  color: white;
+}
+
+.rank-badge {
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  background: #f6f8fa;
+  color: #57606a;
+  font-weight: 500;
+}
+
+.issue-type-display {
+  margin: 8px 0 10px 0;
+}
+
+.issue-type-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #f6f8fa;
+  color: #24292f;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid #d0d7de;
+}
+
+.issue-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 6px;
+}
+
+.issue-signature {
+  margin: 8px 0;
+}
+
+.issue-signature code {
+  background: #f6f8fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #24292f;
+  font-family: 'Monaco', 'Menlo', monospace;
+}
+
+.issue-refactoring {
+  margin: 8px 0;
+}
+
+.refactoring-badge {
+  display: inline-block;
+  background: #24292f;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.issue-rationale {
+  margin-top: 8px;
+  padding: 10px;
+  background: #f6f8fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #57606a;
+  line-height: 1.5;
+}
+
+
+.cleancode-footer {
+  background: #f6f8fa;
+  border-top: 1px solid #d0d7de;
+  padding: 12px 16px;
+  text-align: center;
+  font-size: 11px;
+  color: #57606a;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.download-pdf-btn {
+  background: linear-gradient(180deg, #0969da 0%, #0860ca 100%);
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.download-pdf-btn:hover {
+  background: linear-gradient(180deg, #0860ca 0%, #0757ba 100%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.download-pdf-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* ---- Feedback Form ---- */
+.feedback-section {
+  width: 100%;
+  text-align: left;
+}
+
+.feedback-toggle {
+  cursor: pointer;
+  font-size: 12px;
+  color: #0969da;
+  font-weight: 600;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.feedback-toggle:hover {
+  text-decoration: underline;
+}
+
+.feedback-form {
+  margin-top: 8px;
+  display: block;
+}
+
+.feedback-form.hidden {
+  display: none;
+}
+
+.feedback-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #24292f;
+  transition: border-color 0.15s;
+}
+
+.feedback-input:focus {
+  border-color: #0969da;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+}
+
+.feedback-textarea {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.4;
+}
+
+.feedback-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.feedback-submit-btn {
+  background: #2da44e;
+  color: #ffffff;
+  border: none;
+  padding: 7px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+
+.feedback-submit-btn:hover:not(:disabled) {
+  background: #2c974b;
+}
+
+.feedback-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.feedback-status {
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.powered-by {
+  display: block;
+}
+
+
+.cleancode-toggle {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: #24292f;
+  color: white;
+  padding: 12px 8px;
+  border-radius: 6px 0 0 6px;
+  cursor: pointer;
+  z-index: 9998;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+  transition: right 0.3s ease;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+body.cleancode-show .cleancode-toggle {
+  right: 320px;
+}
+
+.cleancode-toggle:hover {
+  background: #1c2128;
+}
+
+.cleancode-toggle .toggle-icon {
+  font-size: 16px;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.cleancode-toggle .toggle-text {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+
+.cleancode-sidebar ::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cleancode-sidebar ::-webkit-scrollbar-track {
+  background: #f6f8fa;
+}
+
+.cleancode-sidebar ::-webkit-scrollbar-thumb {
+  background: #d0d7de;
+  border-radius: 4px;
+}
+
+.cleancode-sidebar ::-webkit-scrollbar-thumb:hover {
+  background: #afb8c1;
+}
+
+/* No Issues Message */
+.no-issues-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #57606a;
+}
+
+.no-issues-message .success-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.no-issues-message h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 8px;
+}
+
+.no-issues-message p {
+  font-size: 14px;
+  color: #57606a;
+}
+
+/* Analysis Summary */
+.analysis-summary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+}
+
+.analysis-summary h3 {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: white;
+}
+
+.summary-stats {
+  display: flex;
+  justify-content: space-around;
+}
+
+.summary-stats .stat {
+  text-align: center;
+}
+
+.summary-stats .stat-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.summary-stats .stat-label {
+  display: block;
+  font-size: 12px;
+  opacity: 0.9;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Analyzing Status */
+.analyzing-status {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.analyzing-status h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #24292f;
+  margin: 20px 0 12px;
+}
+
+.analyzing-status #analysis-progress {
+  font-size: 13px;
+  color: #57606a;
+  margin-top: 8px;
+}
+
+/* Error Message */
+.error-message {
+  text-align: center;
+  padding: 40px 20px;
+  color: #d1242f;
+}
+
+.error-message .error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.error-message h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.error-message p {
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.error-message .error-hint {
+  font-size: 12px;
+  color: #57606a;
+  font-style: italic;
+}
+
+.error-message .retry-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background: #2da44e;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.error-message .retry-btn:hover {
+  background: #2c974b;
+}
+
+/* No Files Message */
+.no-files-message {
+  text-align: center;
+  padding: 60px 20px;
+  color: #57606a;
+}
+
+.no-files-message .info-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.no-files-message h3 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 8px;
+}
+
+.no-files-message p {
+  font-size: 14px;
+  color: #57606a;
+}
+
+/* File Header Expand */
+.file-header {
+  cursor: pointer;
+}
+
+.file-header .expand-icon {
+  margin-left: auto;
+  font-size: 12px;
+  transition: transform 0.3s;
+}
+
+/* Badge variants */
+.badge.success {
+  background: #24292f;
+  color: white;
+}
+
+.badge.issue-badge {
+  background: #24292f;
+  color: white;
+  margin-left: 8px;
+}
+
+/* Progressive Analysis UI */
+.current-file-analysis {
+  padding: 16px;
+  background: #f6f8fa;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border: 1px solid #d0d7de;
+}
+
+.progress-info {
+  margin-bottom: 12px;
+}
+
+.file-name {
+  font-weight: 600;
+  color: #24292f;
+  margin-bottom: 12px;
+  word-break: break-word;
+  font-size: 13px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: #e5e7eb;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #0969da, #1f6feb);
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: #57606a;
+  text-align: center;
+}
+
+/* Spinner animation */
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #0969da;
+  border-radius: 50%;
+  animation: spinner 0.6s linear infinite;
+  margin: 10px auto;
+}
+
+@keyframes spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.status-badge.clean {
+  background: #f6f8fa;
+  color: #24292f;
+  border: 1px solid #d0d7de;
+}
+
+.no-issues {
+  text-align: center;
+}
+
+/* Disable GitHub's native line highlighting completely - AGGRESSIVE */
+.highlighted,
+div.highlighted,
+tr.highlighted,
+tr.highlighted td,
+div.highlighted > span,
+[data-highlighted="true"],
+.js-file-line.highlighted,
+.blob-code.highlighted,
+.blob-code-inner.highlighted {
+  background-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Also disable any line that GitHub might highlight on load */
+tr.highlighted::before,
+div.highlighted::before {
+  display: none !important;
+}
+
+/* Code Highlighting for Navigation - TR based (old layout) */
+tr.cleancode-highlight,
+tr.cleancode-highlight td {
+  background-color: rgba(255, 212, 59, 0.4) !important;
+  transition: background-color 0.3s ease !important;
+}
+
+/* Code Highlighting for Navigation - DIV based (new layout) */
+div.cleancode-highlight {
+  background-color: rgba(255, 212, 59, 0.4) !important;
+  transition: background-color 0.3s ease !important;
+  display: block !important;
+  width: 100% !important;
+}
+
+/* Override GitHub's default highlight when our class is present */
+tr.cleancode-highlight.highlighted,
+tr.cleancode-highlight.highlighted td,
+div.cleancode-highlight.highlighted {
+  background-color: rgba(255, 212, 59, 0.4) !important;
+}
+
+
+@media (max-width: 768px) {
+  .cleancode-sidebar {
+    width: 100%;
+  }
+  
+  body.cleancode-show .cleancode-toggle {
+    right: 100%;
+  }
+}

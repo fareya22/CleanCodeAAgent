@@ -1,0 +1,176 @@
+[
+  {
+    "rank": 1,
+    "className": "InputProcessor",
+    "functionName": "N/A",
+    "functionSignature": "N/A",
+    "refactoringType": "extract class",
+    "issues": [
+      "God Class",
+      "Single Responsibility Principle Violation",
+      "Too many responsibilities (11 methods)"
+    ],
+    "explanation": {
+      "summary": "The InputProcessor class exhibits characteristics of a God Class, with too many responsibilities. It should be refactored by extracting one or more classes to improve modularity and cohesion.",
+      "details": "The InputProcessor class has 11 methods and is responsible for managing input processing, status tracking, and various utility functions. This indicates that it has too many responsibilities and violates the single responsibility principle. The variable usage analysis shows that the methods primarily use global variables rather than their own class variables.",
+      "designPatternViolations": [
+        "Single Responsibility Principle (SRP)",
+        "God Class Anti-pattern"
+      ]
+    },
+    "suggestedRefactoring": {
+      "type": "extract class",
+      "description": "Extract one or more classes from InputProcessor",
+      "proposedClasses": [
+        {
+          "name": "InputManager",
+          "responsibility": "Managing the input processing and storage"
+        },
+        {
+          "name": "StatusTracker",
+          "responsibility": "Tracking the last processed input and the total process count"
+        },
+        {
+          "name": "InputUtility",
+          "responsibility": "Providing utility functions related to input processing"
+        }
+      ]
+    },
+    "benefits": [
+      "Improve class cohesion",
+      "Reduce class complexity",
+      "Better encapsulate data and responsibilities",
+      "Improve overall modularity and maintainability",
+      "Enhance code testability"
+    ],
+    "severity": "HIGH",
+    "priority": "CRITICAL"
+  },
+  {
+    "rank": 2,
+    "className": "InputProcessor",
+    "functionName": "processInput",
+    "functionSignature": "private void processInput(String input)",
+    "refactoringType": "extract method",
+    "issues": [
+      "Feature Envy",
+      "High Fan-in",
+      "Specific Responsibility"
+    ],
+    "explanation": {
+      "summary": "The processInput method is responsible for processing an individual input, which is a specific responsibility that could be extracted into a separate method or class.",
+      "details": "The high fan-in analysis reveals that the processInput method is frequently called by other methods in the class. The method shows signs of feature envy by being more interested in data from global variables than its own instance variables.",
+      "designPatternViolations": [
+        "Feature Envy",
+        "Tight Coupling"
+      ]
+    },
+    "suggestedRefactoring": {
+      "type": "extract method",
+      "description": "Separate input processing logic into dedicated method(s)",
+      "proposedMethods": [
+        {
+          "name": "validateInput",
+          "responsibility": "Validate input data"
+        },
+        {
+          "name": "transformInput",
+          "responsibility": "Transform and prepare input for processing"
+        }
+      ]
+    },
+    "benefits": [
+      "Reduce method complexity",
+      "Improve code reusability",
+      "Better encapsulation of processing logic",
+      "Easier to test and debug"
+    ],
+    "severity": "MEDIUM",
+    "priority": "HIGH"
+  },
+  {
+    "rank": 3,
+    "className": "InputProcessor",
+    "functionName": "processAndReset",
+    "functionSignature": "public void processAndReset()",
+    "refactoringType": "extract method",
+    "issues": [
+      "Multiple Responsibilities",
+      "Feature Envy",
+      "High Fan-out",
+      "Violates Single Responsibility Principle"
+    ],
+    "explanation": {
+      "summary": "The processAndReset method combines the responsibilities of processing inputs and resetting the processor. These should be separated into distinct methods or classes to improve cohesion.",
+      "details": "The high fan-out analysis reveals that this method calls multiple other methods and has many dependencies. The method is trying to handle two separate concerns: processing and resetting, which should be independent operations.",
+      "designPatternViolations": [
+        "Single Responsibility Principle (SRP)",
+        "Tight Coupling"
+      ]
+    },
+    "suggestedRefactoring": {
+      "type": "extract method",
+      "description": "Split into two separate methods",
+      "proposedMethods": [
+        {
+          "name": "process()",
+          "responsibility": "Handle input processing only"
+        },
+        {
+          "name": "reset()",
+          "responsibility": "Handle processor reset only"
+        }
+      ]
+    },
+    "benefits": [
+      "Adheres to Single Responsibility Principle",
+      "Reduces fan-out and dependencies",
+      "Allows methods to be called independently",
+      "Improves code clarity and readability"
+    ],
+    "severity": "MEDIUM",
+    "priority": "HIGH"
+  },
+  {
+    "rank": 4,
+    "className": "InputProcessor",
+    "functionName": "addAndProcess",
+    "functionSignature": "public void addAndProcess(String input)",
+    "refactoringType": "extract method",
+    "issues": [
+      "Multiple Responsibilities",
+      "Feature Envy",
+      "Violates Single Responsibility Principle"
+    ],
+    "explanation": {
+      "summary": "The addAndProcess method combines the responsibilities of adding an input and processing it. These should be separated into distinct methods or classes to improve cohesion.",
+      "details": "This method is responsible for two distinct concerns: storing/adding an input and performing processing on it. By combining these responsibilities, the method becomes harder to reuse, test, and maintain.",
+      "designPatternViolations": [
+        "Single Responsibility Principle (SRP)",
+        "Feature Envy"
+      ]
+    },
+    "suggestedRefactoring": {
+      "type": "extract method",
+      "description": "Split into two separate methods",
+      "proposedMethods": [
+        {
+          "name": "add(String input)",
+          "responsibility": "Handle input addition/storage only"
+        },
+        {
+          "name": "process()",
+          "responsibility": "Handle input processing only"
+        }
+      ]
+    },
+    "benefits": [
+      "Improves code clarity",
+      "Makes methods more reusable",
+      "Adheres to Single Responsibility Principle",
+      "Easier to compose configurations of operations"
+    ],
+    "severity": "MEDIUM",
+    "priority": "MEDIUM"
+  }
+]

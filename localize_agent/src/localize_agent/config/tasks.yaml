@@ -4,101 +4,203 @@ planning_task:
     1. Design Issue Identification Phase:
        - Specify which code elements to analyze (classes, methods, dependencies)
        - Define criteria for identifying modularity, complexity, information hiding, god class, and feature envy issues
-       - List specific metrics to measure (e.g., coupling, cohesion, class size, method dependencies)
-    
+       - IMPORTANT: God Class should ONLY count business logic methods (exclude getters/setters). Only flag if business logic methods > 5. Do NOT flag model/DTO classes that only have getters/setters.
+       - Feature Envy: Method using 4+ fields from ANOTHER class (not its own)
+       - Information Hiding: (a) class exposes public instance fields, (b) method directly accesses public fields of another object
+       - Complexity: includes inline variable (single-use variable) and inline method (trivial one-liner called once)
+       - List specific metrics to measure (e.g., coupling, cohesion, class size, business method count excluding getters/setters)
+
     2. Code Analysis Phase:
        - Specify dependencies and relationships to examine
-    
+
     3. Prompt Engineering Phase:
        - Outline key elements to include in the analysis summary
        - Define criteria for selecting code sections to refactor
-    
+
     4. Issue Localization Phase:
        - Define priority criteria for selecting refactoring targets
        - Specify validation checks for proposed refactorings
 
     5. Ranking Phase:
        - Define criteria for ranking refactoring suggestions based on impact and feasibility
-  
+
   expected_output: >
-    A structured analysis plan document containing: Issue Identification Strategy, Analysis Execution Plan, Prompt Construction Guidelines, Localization Criteria, and Ranking Strategy. Each section should be clearly defined and actionable.:
+    A structured analysis plan document containing: Issue Identification Strategy, Analysis Execution Plan, Prompt Construction Guidelines, Localization Criteria, and Ranking Strategy. Each section should be clearly defined and actionable.
 
   agent: planning_agent
 
 design_issue_identification_task:
   description: >
-    Conduct an initial review of the following code to identify design issues from the following categories: "modularity", "complexity", "information hiding", "god class", and "feature envy". Suggest an appropriate refactoring type based on the identified issue(s), selected from "move method", "extract class", "extract method", "parameterize variable", "inline variable", or "inline method". The output must be structured and easily parsable for subsequent tasks.
+    Conduct an initial review of the following code to identify design issues.
     
+    CRITICAL: You MUST perform an EXHAUSTIVE analysis. Check for ALL issue types systematically.
+    Do NOT stop after finding one issue - continue checking for all other types.
+    Your analysis must be CONSISTENT - the same code should always produce the same results.
+
+    ISSUE TYPES AND DETECTION RULES (check ALL of these):
+    - "god class": Count ONLY business logic methods (exclude getters/setters like get*, set*, is*). Only flag if business method count > 5. Do NOT flag model/DTO classes.
+    - "feature envy": A method that uses 4+ fields from ANOTHER class's data directly.
+    - "complexity": ANY of the following:
+        * Cyclomatic complexity > 5 or nesting depth > 3
+        * A local variable that is declared and used exactly once on the very next line → "inline variable" refactoring
+        * A method whose entire body is a single trivial expression and is called only once → "inline method" refactoring
+    - "modularity": Poor separation of concerns, multiple responsibilities in one class.
+    - "information hiding": (a) class has actual public instance fields (not methods). (b) a method in this class directly sets or reads public fields of ANOTHER object via dot-notation (obj.field = ... or reading obj.field), bypassing encapsulation.
+
+    SYSTEMATIC ANALYSIS CHECKLIST:
+    1. Count business logic methods (exclude get*/set*/is*) → check if > 5 for "god class"
+    2. Scan each method for external field accesses → check if any method accesses 4+ fields from another class for "feature envy"
+    3. Check for public instance fields → flag "information hiding"
+    4. Check for direct field access on external objects (obj.field) → flag "information hiding"
+    5. Scan for single-use variables → flag "complexity"
+    6. Check method complexity and nesting → flag "complexity"
+    7. Check for multiple responsibilities → flag "modularity"
+
     Code to analyze:
     {code}
+
+    Output a JSON object with EXACTLY TWO keys:
+    - "design_issues": array of ALL applicable types from the list above (can be multiple)
+    - "refactoring_types": array of ALL applicable refactoring strings from ["move method", "extract class", "extract method", "parameterize variable", "inline variable", "inline method"] (one entry per distinct issue found)
+
+    Example for a file with inline variables only:
+    {"design_issues": ["complexity"], "refactoring_types": ["inline variable"]}
+
+    Example for a file with multiple issues:
+    {"design_issues": ["information hiding", "god class", "feature envy"], "refactoring_types": ["extract class", "move method"]}
+
   expected_output: >
     A JSON object with two keys:
-    - "design_issues": an array of one or more design issue types, each being one of "modularity", "complexity", "information hiding", "god class", or "feature envy".
-    - "refactoring": a string that is exactly one of "move method", "extract class", "extract method", "parameterize variable", "inline variable", or "inline method".
-    Do not include any extra data.
+    - "design_issues": an array of ALL applicable design issue types found.
+    - "refactoring_types": an array of ALL applicable refactoring strings from ["move method", "extract class", "extract method", "parameterize variable", "inline variable", "inline method"].
+    Example: {"design_issues": ["complexity", "information hiding", "god class"], "refactoring_types": ["inline variable", "extract class"]}
+    Do not include any extra data. Output ONLY the JSON object.
   agent: design_issue_identification_agent
 
 code_analysis_task:
   description: >
-    Using the planning instructions and the output from the design_issue_identification_agent (which provides the identified design issues and the corresponding refactoring recommendation), perform a targeted analysis of the provided code. Focus on relevant metrics such as fan-in/fan-out, method call dependencies, variable usage, and class coupling. Use the CountMethods tool to determine the number of methods and the VariableUsage tool to analyze variable usage. 
+    Using the design issues identified by the design_issue_identification_agent, interpret
+    the following pre-computed static analysis metrics and produce a targeted analysis report.
 
-    Code to analyze:
-    {code}
+    Pre-computed static analysis metrics (already computed from the code):
+    {metrics}
 
-    The first output should provide reasoning over the results from these tools, explaining how the metrics relate to the identified design issue and the suggested refactoring type. Clearly correlate these metrics with the design issue to assess the impact on the code. The instructions are designed to be explicit, unambiguous, and robust to guide subsequent refactoring efforts.
+    IMPORTANT GUIDELINES FOR METRIC ANALYSIS:
+    - For God Class: Count ONLY business logic methods (exclude get*, set*, is* patterns). Only report as God Class issue if business method count > 5 AND the class is not purely a model/DTO.
+    - For Feature Envy: Count cross-class field accesses (4+ fields from another class).
+    - For Information Hiding: Count ACTUAL PUBLIC FIELDS (not public methods). Also count direct dot-notation field accesses on external objects.
+    - For Complexity/Inline Variable: Count single-use local variables. Count trivial one-liner methods.
+    - Always distinguish between model/DTO classes and business logic classes.
+
+    Explain how the metrics relate to the identified design issues and the suggested refactoring types.
+    Do NOT re-include the source code — rely on the metrics and the issue identification output above.
 
   expected_output: >
     A comprehensive and structured analysis report that includes:
-      - Reasoning over the tool outputs, explaining their relevance to the identified design issue.
-      - Quantitative metrics (e.g., fan-in, fan-out, dependency counts) relevant to the design issue.
-      - The number of methods within the project based on the CountMethods tool.
+      - Reasoning over the provided metrics, explaining their relevance to the identified design issue.
+      - Quantitative metrics (e.g., business logic method count excluding getters/setters, fan-in, fan-out, single-use variable count) relevant to the design issue.
+      - Clear distinction: "X business logic methods (excluding Y getters/setters)" for God Class checks.
       - Qualitative commentary on how these metrics reflect the impact of the identified design issue.
       - A clear explanation linking the analysis results with the recommended refactoring type.
   agent: code_analyzer_agent
+  context:
+    - design_issue_identification_task
 
 prompt_engineering_task:
   description: >
-    Based on the outputs from the design issue identification and code analysis tasks, create a clear and actionable prompt for the design_issue_localization_agent. Use the answer from the code_analysis_task/agent to get the recommended refactoring type, design issue type, and analysis summary. Your task is to construct a dictionary called "prompt" with three keys:
-      - "query": A clear question asking which class, function, or variable should be refactored using [refactoring type] to resolve the identified design issue [design_issues]. The query should not contain a class name, but rather puts it as a question.
+    Based on the outputs from the design issue identification and code analysis tasks, create a clear and actionable prompt for the design_issue_localization_agent. Your task is to construct a dictionary called "prompt" with three keys:
+      - "query": A clear question asking which classes, functions, or variables should be refactored. Include ALL detected design issue types and ALL applicable refactoring types. Example: "Which methods exhibit feature envy, which variables are inline candidates, and which public fields violate information hiding?"
       - "code_snippet": the whole input code {code}.
-      - "analysis_summary": A concise summary of the code analysis findings, including key metrics and their relation to the identified design issue and refactoring recommendation. This summary should be detailed enough to guide the localization agent but avoid unnecessary verbosity.
-    The instructions must be explicit, unambiguous, and robust to guide the localization process accurately.
+      - "analysis_summary": A concise ~80-100 word summary covering ALL identified design issues (not just one), including key metrics and specific examples for each issue type (e.g., for inline variable: name the specific variables; for information hiding: name the public fields; for feature envy: name the methods and which class fields they access).
+    The instructions must be explicit, unambiguous, and robust to guide the localization process for ALL issues found.
   expected_output: >
     A dictionary named "prompt" structured as follows:
     {
-      "query": "Which class, function, or variable should be refactored to address the identified design issue?",
-      "code_snippet": {code},
-      "analysis_summary": "A summary of the code analysis findings, including key metrics and their relation to the identified design issue and refactoring recommendation."
+      "query": "Which classes, functions, or variables should be refactored to address ALL identified design issues?",
+      "code_snippet": "<the provided source code>",
+      "analysis_summary": "A summary covering ALL identified design issues, including key metrics and their relation to each issue type and its applicable refactoring recommendation."
     }
   agent: prompt_engineering_agent
+  context:
+    - design_issue_identification_task
+    - code_analysis_task
 
 design_issue_localization_task:
   description: >
-    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the "prompt" dictionary, follow its instructions, and determine the class and method (or variable, if applicable) that need to be refactored. If there are multiple functions or locations to refactor, generate a separate JSON/dict for each. The output must be formatted as a list of JSON/dict objects, where each object contains exactly the following keys: "Class name", "Function name", "Function signature", "refactoring_type", and "rationale". This output should instruct the developer on where to apply the refactoring. For "extract class" refactoring, identify the class that should be split and the methods/fields that should be moved to a new class.
+    Utilize the prompt provided by the prompt_engineering_task to identify the specific locations in the code that require refactoring. Analyze the code and determine the class and method (or variable, if applicable) that need to be refactored for EACH identified design issue. If there are multiple functions, variables, or classes to refactor, generate a separate JSON object for each one.
+
+    CRITICAL REQUIREMENTS:
+    1. EXHAUSTIVE REPORTING: You MUST report issues for ALL design issue types that were identified in the previous stages
+    2. If "information hiding", "feature envy", AND "inline variable" were all identified, you MUST produce JSON objects for EACH type
+    3. Do NOT cherry-pick or focus on only the most obvious issues - report EVERY instance
+    4. Be CONSISTENT - the same code should always produce the same localization results
+
+    The output must be a JSON array where each object contains EXACTLY these six keys:
+    - "Class name": The class containing the issue
+    - "Function name": The method containing the issue (or "N/A" for class-level issues)
+    - "Function signature": Full method signature
+    - "refactoring_type": Must be one of: move method, extract class, extract method, parameterize variable, inline variable, inline method
+    - "rationale": MUST explicitly state: (1) which design issue this targets, (2) specific code evidence (e.g., "Variable 'laptopIndex' assigned on line 32 and used only once on line 33")
+    - "line": Integer line number where the function/variable/class is defined
+
+    SPECIFIC RULES FOR EACH ISSUE TYPE:
+    - For "inline variable": each single-use variable gets its own JSON object
+    - For "extract class": identify which methods/fields to move to the new class
+    - For "information hiding": flag both (a) classes with public instance fields AND (b) methods that access public fields of other objects via dot-notation
+    - For "feature envy": flag methods that access 4+ fields from another class
+    - For "god class": flag classes with more than 5 business logic methods (excluding getters/setters)
+
   expected_output: >
-    A list of JSON/dict objects, each formatted exactly as follows:
-    {
-      "Class name": "Identified class name",
-      "Function name": "Identified function name",
-      "Function signature": "Identified function signature",
-      "refactoring_type": "One of move method, extract class, extract method, parameterize variable, inline variable, or inline method",
-      "rationale": "Brief explanation of why this location needs refactoring"
-    }
-    Do not include any extra information.
+    A JSON array, output ONLY the array with no extra text:
+    [
+      {
+        "Class name": "Identified class name",
+        "Function name": "Identified function name",
+        "Function signature": "Identified function signature",
+        "refactoring_type": "inline variable",
+        "rationale": "Variable 'laptopIndex' is assigned on line 32 and used exactly once on line 33. It can be inlined as manager.placeOrder(0, 2).",
+        "line": 32
+      }
+    ]
   agent: design_issue_localization_agent
+  context:
+    - prompt_engineering_task
 
 ranking_task:
   description: >
-    Rank the outputs from the design_issue_localization_agent based on their importance. The ranking should consider the analysis results and the recommended refactoring type. Each output should include an additional key called "rank" that assigns a rank to the item. Start ranking them from 1.
+    Rank the outputs from the design_issue_localization_agent based on their importance.
+    Priority order: god class (1st) > feature envy (2nd) > complexity (3rd) > modularity (4th) > information hiding (5th).
+    Within same category, rank by impact scope (methods affecting many callers ranked higher).
+    
+    For EACH object:
+    1. Add a "rank" key (integer starting from 1)
+    2. Add an "issue_type" key - use BOTH rationale AND refactoring_type field to determine:
+       - If rationale mentions "god class" OR "God class" → "God Class"
+       - If refactoring_type is "extract class" AND rationale does NOT mention "feature envy" → "God Class"
+       - If rationale mentions "feature envy" OR "Feature Envy" → "Feature Envy"
+       - If refactoring_type is "move method" → "Feature Envy"
+       - If refactoring_type is "inline variable" OR "inline method" OR "parameterize variable" OR "extract method" → "Complexity"
+       - If rationale mentions "complexity" OR "cyclomatic" OR "nesting" OR "hard-coded" OR "magic number" → "Complexity"
+       - If rationale mentions "modularity" OR "separation of concerns" → "Modularity"
+       - If rationale mentions "information hiding" OR "public field" OR "encapsulation" → "Information Hiding"
+    3. The issue_type MUST be one of these 5 values ONLY: "God Class", "Feature Envy", "Complexity", "Modularity", "Information Hiding"
+    4. Preserve ALL other keys including "line"
+    5. IMPORTANT: Process the rules in order from top to bottom. First match wins.
+
   expected_output: >
-    A list of JSON/dict objects, each formatted exactly as follows:
-    {
-      "Class name": "Identified class name",
-      "Function name": "Identified function name",
-      "Function signature": "Identified function signature",
-      "refactoring_type": "One of move method, extract class, extract method, parameterize variable, inline variable, or inline method",
-      "rationale": "Brief explanation of why this location needs refactoring",
-      "rank": "An integer representing the rank of this item"
-    }
-    The rank should be assigned based on the importance of the refactoring target.
+    A JSON array (output ONLY the array, no extra text):
+    [
+      {
+        "Class name": "Identified class name",
+        "Function name": "Identified function name",
+        "Function signature": "Identified function signature",
+        "refactoring_type": "One of: move method, extract class, extract method, parameterize variable, inline variable, inline method",
+        "rationale": "Brief explanation referencing specific design issue and code evidence",
+        "line": 42,
+        "rank": 1,
+        "issue_type": "God Class"
+      }
+    ]
   agent: ranking_agent
+  context:
+    - design_issue_localization_task

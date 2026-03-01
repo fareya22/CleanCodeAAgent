@@ -11,8 +11,11 @@ load_dotenv()
 os.environ["OTEL_SDK_DISABLED"] = "true"
 
 # Configure LiteLLM settings
-litellm.set_verbose = False
+# Note: Use os.environ['LITELLM_LOG'] = 'DEBUG' for debugging (not recommended in production - exposes credentials)
+# litellm.set_verbose is deprecated
 litellm.drop_params = True  # Drop unsupported params
+litellm.num_retries = 3  # Retry on connection errors
+litellm.request_timeout = 600  # Increase timeout to 10 minutes
 
 # AWS Bedrock Claude as PRIMARY model
 PRIMARY_MODEL = "bedrock/anthropic.claude-3-haiku-20240307-v1:0"
@@ -73,7 +76,10 @@ def run():
 
     try:
         print("[RUN] Running crew with AWS Bedrock Claude...")
-        from localize_agent.crew import LocalizeAgent
+        try:
+            from localize_agent.crew import LocalizeAgent
+        except ModuleNotFoundError:
+            from crew import LocalizeAgent
         LocalizeAgent().crew().kickoff(inputs=inputs)
         print("[OK] Crew execution completed successfully!")
     except Exception as e:

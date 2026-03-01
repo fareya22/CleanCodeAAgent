@@ -1,0 +1,257 @@
+[
+  {
+    "priority": "CRITICAL",
+    "rank": 1,
+    "className": "InputProcessor",
+    "functionName": "N/A",
+    "functionSignature": "N/A",
+    "designIssues": [
+      {
+        "name": "God Class",
+        "description": "The InputProcessor class has 11 methods performing multiple unrelated responsibilities"
+      },
+      {
+        "name": "Single Responsibility Principle (SRP) Violation",
+        "description": "The class is responsible for managing input processing, status tracking, and various utility functions, violating SRP"
+      },
+      {
+        "name": "Feature Envy",
+        "description": "Methods primarily use global variables rather than their own class variables, indicating tight coupling with external state"
+      },
+      {
+        "name": "High Complexity",
+        "description": "Multiple unrelated responsibilities distributed across many methods with high cohesion complexity"
+      }
+    ],
+    "refactoringType": "extract class",
+    "explanation": "To address these design issues, extract one or more classes from InputProcessor (such as InputManager, StatusTracker, InputUtility). This refactoring will distribute responsibilities appropriately, improving modularity and reducing coupling.",
+    "keyBenefits": [
+      {
+        "title": "Potential Improvement in Design Quality",
+        "description": "Extracting multiple classes from InputProcessor will significantly improve the modularity of the class, reducing its coupling and aligning it better with the SRP. This will have a high positive impact on the overall design quality of the codebase."
+      },
+      {
+        "title": "Estimated Effort and Complexity",
+        "description": "The proposed 'extract class' refactoring is relatively straightforward and should not introduce a high level of complexity or effort compared to other potential refactorings."
+      },
+      {
+        "title": "Reduced Risk of Regressions",
+        "description": "The refactoring is focused on improving the modularity of the class and does not involve major structural changes to the codebase. This reduces the risk of introducing new issues or regressions during the refactoring process."
+      },
+      {
+        "title": "Overall Impact on Maintainability and Extensibility",
+        "description": "By improving the modularity and reducing the coupling, the refactoring will have a positive impact on the long-term maintainability and extensibility of the codebase. This is a key consideration in the ranking process."
+      }
+    ],
+    "proposedClasses": [
+      {
+        "name": "InputManager",
+        "responsibility": "Managing input processing and storage",
+        "methods": [
+          "processInput(String input)",
+          "storeInput(String input)",
+          "getProcessedInputs()"
+        ]
+      },
+      {
+        "name": "StatusTracker",
+        "responsibility": "Tracking the last processed input and total process count",
+        "methods": [
+          "updateStatus(String lastInput)",
+          "incrementProcessCount()",
+          "getStatus()"
+        ]
+      },
+      {
+        "name": "InputUtility",
+        "responsibility": "Providing utility functions related to input processing",
+        "methods": [
+          "validateInput(String input)",
+          "transformInput(String input)",
+          "formatInput(String input)"
+        ]
+      }
+    ],
+    "estimatedComplexity": "MODERATE",
+    "impactLevel": "HIGH",
+    "riskLevel": "LOW"
+  },
+  {
+    "priority": "HIGH",
+    "rank": 2,
+    "className": "InputProcessor",
+    "functionName": "processInput",
+    "functionSignature": "private void processInput(String input)",
+    "designIssues": [
+      {
+        "name": "Feature Envy",
+        "description": "The method exhibits high fan-in usage, being more interested in operations from other classes than its own responsibilities"
+      },
+      {
+        "name": "Tight Coupling with Global State",
+        "description": "Heavy reliance on external dependencies rather than internal state"
+      },
+      {
+        "name": "Limited Reusability",
+        "description": "The method is tightly coupled, making it difficult to reuse processing logic in different contexts"
+      },
+      {
+        "name": "Responsibility Concentration",
+        "description": "Contains specific processing logic that could be better encapsulated in separate, focused methods"
+      }
+    ],
+    "refactoringType": "extract method",
+    "explanation": "To resolve these design issues, extract the processing logic into separate, focused methods (e.g., validateInput(), transformInput(), executeProcessing()). This breaks down the monolithic method into smaller, single-purpose methods that can be reused independently.",
+    "keyBenefits": [
+      {
+        "title": "Improved Code Reusability",
+        "description": "Separating input processing logic into dedicated methods allows these methods to be reused in different contexts without being tied to the processInput method."
+      },
+      {
+        "title": "Reduced Complexity",
+        "description": "Extracting specific concerns from processInput reduces the method's cyclomatic complexity and makes it easier to understand and maintain."
+      },
+      {
+        "title": "Better Encapsulation",
+        "description": "Each extracted method can encapsulate a single concern, improving the clarity of the code and making dependencies explicit."
+      },
+      {
+        "title": "Enhanced Testability",
+        "description": "Smaller, focused methods are easier to unit test in isolation, enabling better test coverage and reducing test complexity."
+      }
+    ],
+    "proposedMethods": [
+      {
+        "name": "validateInput",
+        "responsibility": "Validate input data"
+      },
+      {
+        "name": "transformInput",
+        "responsibility": "Transform and prepare input for processing"
+      },
+      {
+        "name": "executeProcessing",
+        "responsibility": "Execute the actual processing logic"
+      }
+    ],{
+        "name": "Multiple Responsibilities",
+        "description": "Combines two distinct concerns - processing inputs and resetting the processor state"
+      },
+      {
+        "name": "Feature Envy with High Fan-out",
+        "description": "The method has many dependencies on other classes, indicating excessive coupling"
+      },
+      {
+        "name": "Single Responsibility Principle (SRP) Violation",
+        "description": "Two separate concerns should not be handled by a single method"
+      },
+      {
+        "name": "Lack of Flexibility",
+        "description": "Users cannot perform processing without resetting, or reset without processing, limiting utility"
+      }
+    ],
+    "refactoringType": "extract method",
+    "explanation": "To resolve these design issues, split processAndReset() into two independent methods: process() for handling input processing and reset() for handling processor state reset. This enables each method to have a single, clear responsibility
+    "rank": 3,
+    "className": "InputProcessor",
+    "functionName": "processAndReset",
+    "functionSignature": "public void processAndReset()",
+    "designIssues": [
+      "Multiple Responsibilities (processing + resetting)",
+      "Feature Envy (high fan-out)",
+      "Single Responsibility Principle (SRP) Violation",
+      "Tight coupling with multiple dependencies"
+    ],
+    "refactoringType": "extract method",
+    "explanation": "The processAndReset method combines the responsibilities of processing inputs and resetting the processor. High fan-out indicates this method has many dependencies. By separating these concerns into distinct methods, each method can have a single, clear responsibility, improving cohesion and reducing coupling.",
+    "keyBenefits": [
+      {
+        "title": "Single Responsibility Adherence",
+        "description": "Splitting processAndReset into separate methods ensures each method has one clear purpose, adhering to the Single Responsibility Principle."
+      },
+      {
+        "title": "Reduced Fan-Out",
+        "description": "Separating concerns reduces the number of dependencies each method has, making the code less tightly coupled and more flexible."
+      },
+      {
+        "title": "Independent Method Invocation",
+        "description": "Methods can now be called independently, allowing developers to process data without necessarily resetting, or vice versa, providing more flexibility."
+      },
+      {
+        "title": "Improved Code Clarity",
+        "description": "Clear method names that reflect single responsibilities make the code more readable and easier to understand at a glance."
+      }
+    ],
+    "proposedMethods": [
+      {
+        "name": "process()",
+        "responsibility": "Handle input processing only"
+      },
+      {
+        "name": "reset()",
+        "responsibility": "Handle processor state reset only"
+      }
+    ],{
+        "name": "Multiple Responsibilities",
+        "description": "Combines two distinct concerns - adding/storing input and processing it"
+      },
+      {
+        "name": "Feature Envy",
+        "description": "Method shows signs of being more interested in external operations than maintaining its own state"
+      },
+      {
+        "name": "Single Responsibility Principle (SRP) Violation",
+        "description": "Two separate operations should not be combined in a single method"
+      },
+      {
+        "name": "Limited Method Composability",
+        "description": "Cannot independently add without processing or process previously added inputs"
+      }
+    ],
+    "refactoringType": "extract method",
+    "explanation": "To resolve these design issues, split addAndProcess(String input) into two independent methods: add(String input) for handling input storage and process() for handling input processing. This enables different composition patterns based on user need
+    "rank": 4,
+    "className": "InputProcessor",
+    "functionName": "addAndProcess",
+    "functionSignature": "public void addAndProcess(String input)",
+    "designIssues": [
+      "Multiple Responsibilities (adding + processing)",
+      "Feature Envy",
+      "Single Responsibility Principle (SRP) Violation",
+      "Limited method composability"
+    ],
+    "refactoringType": "extract method",
+    "explanation": "The addAndProcess method combines the responsibilities of adding an input and processing it. These are two distinct concerns that should be separated into independent methods. This refactoring improves code clarity, reusability, and makes the code more flexible for different use cases.",
+    "keyBenefits": [
+      {
+        "title": "Improved Code Clarity",
+        "description": "Separating addition and processing into distinct methods makes the intent clearer and reduces cognitive load when reading the code."
+      },
+      {
+        "title": "Enhanced Reusability",
+        "description": "Independent methods can be reused in different combinations, allowing developers to add without processing, or process previously added inputs."
+      },
+      {
+        "title": "Better Testability",
+        "description": "Each method can be tested independently, making test cases simpler and reducing the number of edge cases to handle."
+      },
+      {
+        "title": "Flexible Method Composition",
+        "description": "Methods can be composed in different ways to handle various scenarios, providing more flexibility in how the class is used."
+      }
+    ],
+    "proposedMethods": [
+      {
+        "name": "add(String input)",
+        "responsibility": "Handle input storage/addition only"
+      },
+      {
+        "name": "process()",
+        "responsibility": "Handle input processing only"
+      }
+    ],
+    "estimatedComplexity": "VERY_LOW",
+    "impactLevel": "MEDIUM",
+    "riskLevel": "VERY_LOW"
+  }
+]
